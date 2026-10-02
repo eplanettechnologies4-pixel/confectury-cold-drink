@@ -1,28 +1,46 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Store, Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck, MapPin, Phone } from 'lucide-react';
+import { Store, Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck, MapPin, Phone, Database, CheckCircle2 } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { BUSINESS_CONFIG } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
+import { User } from '@/types';
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAppState();
 
-  const [email, setEmail] = useState('ahmad.raza@ahmadtraders.pk');
-  const [password, setPassword] = useState('AhmadTraders2026!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState('Admin');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isSupabaseConfigured, setIsSupabaseConfigured] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    // Check if Supabase keys are configured in environment
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (
+      supabaseUrl &&
+      !supabaseUrl.includes('placeholder') &&
+      supabaseKey &&
+      !supabaseKey.includes('placeholder')
+    ) {
+      setIsSupabaseConfigured(true);
+    }
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!email.includes('@')) {
+    const cleanEmail = email.trim();
+    if (!cleanEmail.includes('@')) {
       setError('Please enter a valid business email address');
       return;
     }
@@ -33,17 +51,70 @@ export default function LoginPage() {
 
     setIsLoading(true);
 
+    // Save or clear remember-me preference
+    if (rememberMe) {
+      localStorage.setItem('ahmad_remember_session', 'true');
+    } else {
+      localStorage.removeItem('ahmad_remember_session');
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        const supabase = createClient();
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: password,
+        });
+
+        if (authError) {
+          setError(authError.message);
+          setIsLoading(false);
+          return;
+        }
+
+        if (data?.user) {
+          // Fetch linked profile from public.staff_profiles
+          const { data: profile } = await supabase
+            .from('staff_profiles')
+            .select('*')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+
+          const userRole = (profile?.role || data.user.user_metadata?.role || selectedRole || 'Admin') as User['role'];
+          const userName = profile?.name || data.user.user_metadata?.name || cleanEmail.split('@')[0].toUpperCase();
+
+          const authenticatedUser: User = {
+            id: profile?.id || data.user.id,
+            name: userName,
+            email: data.user.email || cleanEmail,
+            role: userRole,
+            department: profile?.department || data.user.user_metadata?.department || 'Management',
+            avatarUrl: profile?.avatar_url,
+          };
+
+          login(authenticatedUser);
+          setIsLoading(false);
+          router.push('/dashboard');
+          return;
+        }
+      }
+    } catch (err: any) {
+      console.warn('Supabase auth check encountered error, continuing to local ERP login:', err);
+    }
+
+    // Local ERP authentication fallback
     setTimeout(() => {
-      login(email, selectedRole);
+      login(cleanEmail, selectedRole);
       setIsLoading(false);
       router.push('/dashboard');
-    }, 400);
+    }, 350);
   };
 
   const setDemoUser = (demoEmail: string, role: string) => {
     setEmail(demoEmail);
     setPassword('AhmadTraders2026!');
     setSelectedRole(role);
+    setError('');
   };
 
   return (
@@ -71,11 +142,30 @@ export default function LoginPage() {
           </div>
         </div>
 
+        {/* Database Status Indicator */}
+        <div className="mb-4 flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
+          <span className="flex items-center text-slate-400 font-medium">
+            <Database className="h-3 w-3 text-emerald-400 mr-1.5" />
+            Authentication Source:
+          </span>
+          {isSupabaseConfigured ? (
+            <span className="flex items-center text-emerald-400 font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+              Supabase Cloud
+            </span>
+          ) : (
+            <span className="flex items-center text-amber-400 font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
+              Direct ERP Mode
+            </span>
+          )}
+        </div>
+
         {/* Validation error display */}
         {error && (
           <div className="mb-4 p-3 bg-rose-950/60 border border-rose-800/80 rounded-lg text-rose-300 text-xs flex items-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mr-2"></span>
-            {error}
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mr-2 shrink-0"></span>
+            <span>{error}</span>
           </div>
         )}
 
@@ -91,7 +181,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="name@ahmadtraders.pk"
+                placeholder="ahmad.raza@ahmadtraders.pk"
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition"
                 required
               />
@@ -139,7 +229,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center justify-center space-x-2 disabled:opacity-50 mt-4"
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center justify-center space-x-2 disabled:opacity-50 mt-4 cursor-pointer"
           >
             {isLoading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -152,37 +242,42 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Quick Demo Credentials Assistant */}
+        {/* Quick Credentials Presets */}
         <div className="mt-6 pt-5 border-t border-slate-800">
           <p className="text-[11px] font-semibold text-slate-400 mb-2 flex items-center">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 mr-1" /> Quick Role Presets:
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 mr-1" /> Quick Role Presets (Click to autofill):
           </p>
           <div className="grid grid-cols-3 gap-1.5">
             <button
+              type="button"
               onClick={() => setDemoUser('ahmad.raza@ahmadtraders.pk', 'Admin')}
               className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-[10px] text-slate-300 font-medium transition text-center"
             >
               Admin (Ahmad)
             </button>
             <button
+              type="button"
               onClick={() => setDemoUser('tariq.m@ahmadtraders.pk', 'Manager')}
               className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-[10px] text-slate-300 font-medium transition text-center"
             >
               Manager (Tariq)
             </button>
             <button
+              type="button"
               onClick={() => setDemoUser('hamza.sales@ahmadtraders.pk', 'Sales')}
               className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-[10px] text-slate-300 font-medium transition text-center"
             >
               Sales (Hamza)
             </button>
             <button
+              type="button"
               onClick={() => setDemoUser('usman.accounts@ahmadtraders.pk', 'Accounts')}
               className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-[10px] text-slate-300 font-medium transition text-center"
             >
               Accounts (Usman)
             </button>
             <button
+              type="button"
               onClick={() => setDemoUser('bilal.wh@ahmadtraders.pk', 'Inventory')}
               className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-[10px] text-slate-300 font-medium transition text-center"
             >

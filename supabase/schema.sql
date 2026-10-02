@@ -5,8 +5,9 @@
 -- Production-Ready PostgreSQL / Supabase Database Schema
 -- =================================================================
 
--- 1. Enable UUID Extension
+-- 1. Enable Required Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. Staff Profiles & Roles Table
 CREATE TABLE IF NOT EXISTS public.staff_profiles (
@@ -477,3 +478,251 @@ CREATE POLICY "Authenticated users full access damaged_stock" ON public.damaged_
 CREATE POLICY "Authenticated users full access expiry_records" ON public.expiry_records FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Authenticated users full access audit" ON public.audit_logs FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Authenticated users full access receipts" ON public.receipt_logs FOR ALL USING (auth.role() = 'authenticated');
+
+-- =================================================================
+-- 25. SUPABASE AUTH USER SYNCHRONIZATION & USER CREATION
+-- =================================================================
+
+-- A. Trigger function: Auto-create staff_profiles when user is created in auth.users
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_role TEXT;
+  v_name TEXT;
+  v_department TEXT;
+  v_phone TEXT;
+  v_emp_id TEXT;
+BEGIN
+  -- Extract values from user_metadata or fallback to defaults
+  v_role := COALESCE(NEW.raw_user_meta_data->>'role', 'Admin');
+  v_name := COALESCE(
+    NEW.raw_user_meta_data->>'name',
+    NEW.raw_user_meta_data->>'full_name',
+    INITCAP(REPLACE(SPLIT_PART(NEW.email, '@', 1), '.', ' '))
+  );
+  v_department := COALESCE(NEW.raw_user_meta_data->>'department', 'Management');
+  v_phone := COALESCE(NEW.raw_user_meta_data->>'phone', '');
+  v_emp_id := COALESCE(
+    NEW.raw_user_meta_data->>'employee_id',
+    'AT-' || TO_CHAR(NOW(), 'YY') || LPAD(FLOOR(RANDOM() * 9000 + 1000)::TEXT, 4, '0')
+  );
+
+  -- Insert into public.staff_profiles
+  INSERT INTO public.staff_profiles (
+    user_id,
+    employee_id,
+    name,
+    email,
+    phone,
+    role,
+    department,
+    status
+  ) VALUES (
+    NEW.id,
+    v_emp_id,
+    v_name,
+    NEW.email,
+    v_phone,
+    v_role,
+    v_department,
+    'Active'
+  )
+  ON CONFLICT (email) DO UPDATE SET
+    user_id = EXCLUDED.user_id,
+    name = EXCLUDED.name,
+    role = EXCLUDED.role,
+    department = EXCLUDED.department,
+    phone = EXCLUDED.phone,
+    status = 'Active',
+    updated_at = NOW();
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- B. Attach Trigger to auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
+-- C. Stored Procedure: create_erp_user
+-- Allows creating a complete Supabase Auth user + Staff profile directly via SQL Editor in 1 call:
+-- Example: SELECT public.create_erp_user('ahmad.raza@ahmadtraders.pk', 'AhmadTraders2026!', 'Ahmad Raza', 'Admin', 'Management', '03057165320');
+CREATE OR REPLACE FUNCTION public.create_erp_user(
+  p_email TEXT,
+  p_password TEXT,
+  p_name TEXT,
+  p_role TEXT DEFAULT 'Admin',
+  p_department TEXT DEFAULT 'Management',
+  p_phone TEXT DEFAULT ''
+) RETURNS UUID AS $$
+DECLARE
+  v_user_id UUID := gen_random_uuid();
+  v_encrypted_pw TEXT;
+  v_emp_id TEXT;
+BEGIN
+  -- Normalize email
+  p_email := LOWER(TRIM(p_email));
+
+  -- Check if user already exists
+  IF EXISTS (SELECT 1 FROM auth.users WHERE email = p_email) THEN
+    -- If user already exists in auth.users, update their password and metadata
+    v_encrypted_pw := crypt(p_password, gen_salt('bf'));
+    UPDATE auth.users
+    SET 
+      encrypted_password = v_encrypted_pw,
+      raw_user_meta_data = json_build_object(
+        'name', p_name,
+        'role', p_role,
+        'department', p_department,
+        'phone', p_phone
+      ),
+      updated_at = NOW()
+    WHERE email = p_email
+    RETURNING id INTO v_user_id;
+
+    -- Ensure auth.identities has valid provider_id
+    IF NOT EXISTS (SELECT 1 FROM auth.identities WHERE user_id = v_user_id AND provider = 'email') THEN
+      INSERT INTO auth.identities (
+        id,
+        provider_id,
+        user_id,
+        identity_data,
+        provider,
+        last_sign_in_at,
+        created_at,
+        updated_at
+      ) VALUES (
+        gen_random_uuid(),
+        v_user_id::text,
+        v_user_id,
+        format('{"sub":"%s","email":"%s"}', v_user_id::text, p_email)::jsonb,
+        'email',
+        NOW(),
+        NOW(),
+        NOW()
+      );
+    ELSE
+      UPDATE auth.identities
+      SET 
+        provider_id = v_user_id::text,
+        identity_data = format('{"sub":"%s","email":"%s"}', v_user_id::text, p_email)::jsonb,
+        updated_at = NOW()
+      WHERE user_id = v_user_id AND provider = 'email';
+    END IF;
+
+    -- Update staff profile
+    UPDATE public.staff_profiles
+    SET 
+      name = p_name,
+      role = p_role,
+      department = p_department,
+      phone = p_phone,
+      status = 'Active',
+      updated_at = NOW()
+    WHERE email = p_email;
+
+    RETURN v_user_id;
+  END IF;
+
+  v_encrypted_pw := crypt(p_password, gen_salt('bf'));
+  v_emp_id := 'AT-' || TO_CHAR(NOW(), 'YY') || LPAD(FLOOR(RANDOM() * 9000 + 1000)::TEXT, 4, '0');
+
+  -- 1. Insert into auth.users
+  INSERT INTO auth.users (
+    instance_id,
+    id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    recovery_sent_at,
+    last_sign_in_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at,
+    confirmation_token,
+    email_change,
+    email_change_token_new,
+    recovery_token
+  ) VALUES (
+    '00000000-0000-0000-0000-000000000000',
+    v_user_id,
+    'authenticated',
+    'authenticated',
+    p_email,
+    v_encrypted_pw,
+    NOW(),
+    NOW(),
+    NOW(),
+    '{"provider":"email","providers":["email"]}',
+    json_build_object(
+      'name', p_name,
+      'role', p_role,
+      'department', p_department,
+      'phone', p_phone,
+      'employee_id', v_emp_id
+    ),
+    NOW(),
+    NOW(),
+    '',
+    '',
+    '',
+    ''
+  );
+
+  -- 2. Insert into auth.identities
+  INSERT INTO auth.identities (
+    id,
+    provider_id,
+    user_id,
+    identity_data,
+    provider,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) VALUES (
+    gen_random_uuid(),
+    v_user_id::text,
+    v_user_id,
+    format('{"sub":"%s","email":"%s"}', v_user_id::text, p_email)::jsonb,
+    'email',
+    NOW(),
+    NOW(),
+    NOW()
+  );
+
+  -- 3. Ensure Staff Profile exists
+  INSERT INTO public.staff_profiles (
+    user_id,
+    employee_id,
+    name,
+    email,
+    phone,
+    role,
+    department,
+    status
+  ) VALUES (
+    v_user_id,
+    v_emp_id,
+    p_name,
+    p_email,
+    p_phone,
+    p_role,
+    p_department,
+    'Active'
+  )
+  ON CONFLICT (email) DO UPDATE SET
+    user_id = v_user_id,
+    name = EXCLUDED.name,
+    role = EXCLUDED.role,
+    department = EXCLUDED.department,
+    phone = EXCLUDED.phone,
+    status = 'Active';
+
+  RETURN v_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

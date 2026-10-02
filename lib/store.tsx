@@ -50,7 +50,7 @@ import { formatDateDDMMYYYY, getTodayKarachiDate, convertUnitQuantity } from './
 interface AppStateContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
-  login: (email: string, role: string) => boolean;
+  login: (emailOrUser: string | User, role?: string) => boolean;
   logout: () => void;
 
   // Areas
@@ -159,8 +159,9 @@ function loadStored<T>(key: string, legacyKey: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
     // If start-from-zero wipe flag is not yet recorded, purge all previous mock items
-    if (!localStorage.getItem('ahmad_wiped_to_zero_v4')) {
+    if (!localStorage.getItem('ahmad_wiped_to_zero_v5')) {
       const keysToWipe = [
+        'ahmad_current_user', 'eplanet_current_user',
         'ahmad_products', 'eplanet_products',
         'ahmad_clients', 'eplanet_clients',
         'ahmad_suppliers', 'eplanet_suppliers',
@@ -180,7 +181,7 @@ function loadStored<T>(key: string, legacyKey: string, fallback: T): T {
         'ahmad_damaged_stock', 'eplanet_damaged_stock',
       ];
       keysToWipe.forEach(k => localStorage.removeItem(k));
-      localStorage.setItem('ahmad_wiped_to_zero_v4', 'true');
+      localStorage.setItem('ahmad_wiped_to_zero_v5', 'true');
       return fallback;
     }
     const primary = localStorage.getItem(key);
@@ -192,16 +193,22 @@ function loadStored<T>(key: string, legacyKey: string, fallback: T): T {
 }
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Current user
+  // Current user - defaults to null so opening the app/dashboard requires login first
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    return loadStored<User | null>('ahmad_current_user', 'eplanet_current_user', {
-      id: 'stf-1',
-      name: 'Ahmad Raza',
-      email: 'ahmad.raza@ahmadtraders.pk',
-      role: 'Admin',
-      department: 'Executive Management',
-      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-    });
+    if (typeof window === 'undefined') return null;
+    try {
+      const isRemembered = localStorage.getItem('ahmad_remember_session') === 'true';
+      if (!isRemembered) {
+        localStorage.removeItem('ahmad_current_user');
+        localStorage.removeItem('eplanet_current_user');
+        return null;
+      }
+      const stored = localStorage.getItem('ahmad_current_user');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to load user session:', e);
+    }
+    return null;
   });
 
   // Areas
@@ -307,8 +314,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Persistence Effects
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (currentUser) localStorage.setItem('ahmad_current_user', JSON.stringify(currentUser));
-    else localStorage.removeItem('ahmad_current_user');
+    if (currentUser) {
+      const isRemembered = localStorage.getItem('ahmad_remember_session') === 'true';
+      if (isRemembered) {
+        localStorage.setItem('ahmad_current_user', JSON.stringify(currentUser));
+      }
+    } else {
+      localStorage.removeItem('ahmad_current_user');
+      localStorage.removeItem('eplanet_current_user');
+    }
   }, [currentUser]);
 
   useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_areas', JSON.stringify(areas)); }, [areas]);
@@ -333,19 +347,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_audit_logs', JSON.stringify(auditLogs)); }, [auditLogs]);
 
   // Auth operations
-  const login = (email: string, role: string) => {
-    const matched = staff.find(s => s.email.toLowerCase() === email.toLowerCase());
-    const userRole = (role as User['role']) || matched?.role || 'Admin';
-    const newUser: User = {
-      id: matched?.id || 'stf-user',
-      name: matched?.name || email.split('@')[0].replace('.', ' ').toUpperCase(),
-      email: email,
-      role: userRole,
-      department: matched?.department || 'Management',
-      avatarUrl: matched?.avatarUrl,
-    };
+  const login = (emailOrUser: string | User, role?: string) => {
+    let newUser: User;
+    if (typeof emailOrUser === 'object' && emailOrUser !== null) {
+      newUser = emailOrUser;
+    } else {
+      const email = emailOrUser;
+      const matched = staff.find(s => s.email.toLowerCase() === email.toLowerCase());
+      const userRole = (role as User['role']) || matched?.role || 'Admin';
+      newUser = {
+        id: matched?.id || 'stf-user',
+        name: matched?.name || email.split('@')[0].replace('.', ' ').toUpperCase(),
+        email: email,
+        role: userRole,
+        department: matched?.department || 'Management',
+        avatarUrl: matched?.avatarUrl,
+      };
+    }
     setCurrentUser(newUser);
-    addAuditLog('User Login', 'System', newUser.name, `User ${email} signed in with role ${userRole}`);
+    addAuditLog('User Login', 'System', newUser.name, `User ${newUser.email} signed in with role ${newUser.role}`);
     return true;
   };
 
@@ -354,6 +374,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       addAuditLog('User Logout', 'System', currentUser.name, `User ${currentUser.email} logged out`);
     }
     setCurrentUser(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('ahmad_current_user');
+      localStorage.removeItem('eplanet_current_user');
+      localStorage.removeItem('ahmad_remember_session');
+    }
   };
 
   // Audit helper
@@ -576,8 +601,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setExpiryRecords([]);
     setDamagedStockRecords([]);
 
+    setCurrentUser(null);
     if (typeof window !== 'undefined') {
       const keysToWipe = [
+        'ahmad_current_user', 'eplanet_current_user',
         'ahmad_products', 'eplanet_products',
         'ahmad_clients', 'eplanet_clients',
         'ahmad_suppliers', 'eplanet_suppliers',
@@ -597,7 +624,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         'ahmad_damaged_stock', 'eplanet_damaged_stock',
       ];
       keysToWipe.forEach(k => localStorage.removeItem(k));
-      localStorage.setItem('ahmad_wiped_to_zero_v4', 'true');
+      localStorage.setItem('ahmad_wiped_to_zero_v5', 'true');
     }
 
     addAuditLog('Portal Data Reset', 'System', 'RESET', 'All portal data wiped to 0. Fresh start initialized.');
