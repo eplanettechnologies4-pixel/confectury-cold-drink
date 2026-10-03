@@ -220,7 +220,7 @@ export default function LoginPage() {
               />
               Remember session
             </label>
-            <span className="text-emerald-400 font-medium">Asia/Karachi (PKR)</span>
+            {/* <span className="text-emerald-400 font-medium">Asia/Karachi (PKR)</span> */}
           </div>
 
           {/* Submit */}
