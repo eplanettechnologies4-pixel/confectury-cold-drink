@@ -31,7 +31,7 @@ export default function NewOrderPage() {
   const preselectedClientId = searchParams.get('clientId') || (clients[0]?.id ?? '');
 
   const [selectedClientId, setSelectedClientId] = useState<string>(preselectedClientId);
-  const [salesperson, setSalesperson] = useState<string>('Hamza Farooq');
+  const [salesperson, setSalesperson] = useState<string>(currentUser?.name || 'Ahmad Raza');
   const [orderDate, setOrderDate] = useState<string>(getTodayKarachiDate());
   const [paymentMethod, setPaymentMethod] = useState<any>('Credit Account');
   const [amountPaidNow, setAmountPaidNow] = useState<number>(0);

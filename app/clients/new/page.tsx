@@ -33,7 +33,7 @@ export default function AddClientPage() {
       area: areaParam || (areas[0]?.name || 'Madina Town'),
       postalCode: '38000',
     },
-    salesRep: areas[0]?.assignedSalesperson || 'Hamza Farooq',
+    salesRep: areas[0]?.assignedSalesperson || 'Ahmad Raza',
     creditLimit: 50000,
     paymentTerms: '15 Days' as PaymentTerms,
     openingBalance: 0,

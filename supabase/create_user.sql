@@ -208,85 +208,67 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
 -- =================================================================
--- RUN ANY OF THE FOLLOWING STATEMENTS IN SUPABASE SQL EDITOR:
+-- RUN THIS SCRIPT IN SUPABASE SQL EDITOR FOR YOUR NEW ADMIN USER:
+-- Admin UUID: 00a1090c-43b2-41ae-83a9-7d3c2d4daaaf
 -- =================================================================
 
--- 1. Create Main Admin User (Ahmad Raza)
-SELECT public.create_erp_user(
-  'ahmad.raza@ahmadtraders.pk',
-  'AhmadTraders2026!',
+-- 1. Ensure user metadata in auth.users has role 'Admin'
+UPDATE auth.users
+SET 
+  raw_user_meta_data = jsonb_build_object(
+    'name', COALESCE(raw_user_meta_data->>'name', 'Ahmad Raza'),
+    'role', 'Admin',
+    'department', 'Executive Management',
+    'phone', COALESCE(raw_user_meta_data->>'phone', '03057165320'),
+    'employee_id', 'EMP-001'
+  ),
+  updated_at = NOW()
+WHERE id = '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf';
+
+-- 2. Link & synchronize ERP profile in public.staff_profiles
+INSERT INTO public.staff_profiles (
+  user_id,
+  employee_id,
+  name,
+  email,
+  phone,
+  role,
+  department,
+  status
+) VALUES (
+  '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
+  'EMP-001',
   'Ahmad Raza',
+  (SELECT email FROM auth.users WHERE id = '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf'),
+  '03057165320',
   'Admin',
   'Executive Management',
-  '03057165320'
-);
+  'Active'
+)
+ON CONFLICT (email) DO UPDATE SET
+  user_id = '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
+  role = 'Admin',
+  status = 'Active',
+  department = 'Executive Management',
+  updated_at = NOW();
 
--- 2. Create Branch Manager User (Tariq Mahmood)
-SELECT public.create_erp_user(
-  'tariq.m@ahmadtraders.pk',
-  'AhmadTraders2026!',
-  'Tariq Mahmood',
-  'Manager',
-  'Operations',
-  '03040402614'
-);
-
--- 3. Create Sales Officer User (Hamza Malik)
-SELECT public.create_erp_user(
-  'hamza.sales@ahmadtraders.pk',
-  'AhmadTraders2026!',
-  'Hamza Malik',
-  'Sales',
-  'Sales & Distribution',
-  '03001234567'
-);
-
--- 4. Create Accounts Officer User (Usman Ghani)
-SELECT public.create_erp_user(
-  'usman.accounts@ahmadtraders.pk',
-  'AhmadTraders2026!',
-  'Usman Ghani',
-  'Accounts',
-  'Finance & Recovery',
-  '03217654321'
-);
-
--- 5. Create Warehouse/Inventory Manager (Bilal Ahmed)
-SELECT public.create_erp_user(
-  'bilal.wh@ahmadtraders.pk',
-  'AhmadTraders2026!',
-  'Bilal Ahmed',
-  'Inventory',
-  'Warehouse & Logistics',
-  '03339876543'
-);
+-- 3. Clean up any stale staff profiles (keep only the single Admin account)
+DELETE FROM public.staff_profiles 
+WHERE user_id != '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf' 
+   OR user_id IS NULL;
 
 -- =================================================================
--- TEMPLATE FOR CREATING YOUR OWN CUSTOM USER:
--- (Change the email, password, name, role, department, and phone below)
--- =================================================================
-/*
-SELECT public.create_erp_user(
-  'your.email@ahmadtraders.pk', -- Email address
-  'YourSecurePassword123!',     -- Password (min 6 characters)
-  'Your Full Name',             -- Name
-  'Admin',                      -- Role: 'Admin', 'Manager', 'Sales', 'Accounts', 'Inventory', or 'Staff'
-  'Management',                 -- Department
-  '03000000000'                 -- Phone number
-);
-*/
-
--- =================================================================
--- CHECK ALL CREATED USERS:
+-- VERIFY THE ADMIN USER IN SUPABASE:
 -- =================================================================
 SELECT 
-  u.id, 
+  u.id AS auth_user_id, 
   u.email, 
-  sp.name, 
-  sp.role, 
+  u.raw_user_meta_data->>'role' AS auth_role,
+  sp.name AS profile_name, 
+  sp.role AS profile_role, 
   sp.department, 
-  sp.phone, 
   sp.status,
   u.created_at 
 FROM auth.users u
-LEFT JOIN public.staff_profiles sp ON u.id = sp.user_id;
+LEFT JOIN public.staff_profiles sp ON u.id = sp.user_id
+WHERE u.id = '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf';

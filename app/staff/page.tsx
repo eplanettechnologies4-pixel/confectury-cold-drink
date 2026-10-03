@@ -36,8 +36,8 @@ export default function StaffPage() {
     name: '',
     email: '',
     phone: '',
-    role: 'Sales' as StaffRole,
-    department: 'Sales & Distribution',
+    role: 'Admin' as StaffRole,
+    department: 'Executive Management',
     joiningDate: new Date().toISOString().split('T')[0],
     status: 'Active' as 'Active' | 'Inactive',
   });
@@ -107,8 +107,8 @@ export default function StaffPage() {
       name: '',
       email: '',
       phone: '',
-      role: 'Sales',
-      department: 'Sales & Distribution',
+      role: 'Admin',
+      department: 'Executive Management',
       joiningDate: new Date().toISOString().split('T')[0],
       status: 'Active',
     });
@@ -456,16 +456,16 @@ SELECT public.create_erp_user(
           <span className="text-2xl font-extrabold text-slate-900">{staff.length} Active</span>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Sales Reps</span>
-          <span className="text-2xl font-extrabold text-emerald-600">{staff.filter((s) => s.role === 'Sales').length} Reps</span>
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Active System Role</span>
+          <span className="text-2xl font-extrabold text-purple-600">Admin Only</span>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Warehouse & Inventory</span>
-          <span className="text-2xl font-extrabold text-amber-600">{staff.filter((s) => s.role === 'Inventory').length} Officers</span>
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Access Permissions</span>
+          <span className="text-2xl font-extrabold text-emerald-600">Full System</span>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Finance & Accounts</span>
-          <span className="text-2xl font-extrabold text-blue-600">{staff.filter((s) => s.role === 'Accounts').length} Officers</span>
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Active Admin Account</span>
+          <span className="text-base font-extrabold text-slate-800 truncate block mt-1">Ahmad Raza</span>
         </div>
       </div>
 
@@ -493,7 +493,7 @@ SELECT public.create_erp_user(
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-1.5 flex items-center">
               <Sparkles className="h-3 w-3 text-emerald-600 mr-1" />
-              Quick Fill Presets:
+              Quick Fill Preset:
             </label>
             <div className="flex flex-wrap gap-1.5">
               <button
@@ -507,69 +507,10 @@ SELECT public.create_erp_user(
                     phone: '03057165320',
                   })
                 }
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded text-[11px] font-medium text-slate-700 transition"
+                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded text-[11px] font-semibold text-emerald-800 transition flex items-center space-x-1.5"
               >
-                Admin (Ahmad)
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  applyPreset({
-                    name: 'Tariq Mahmood',
-                    email: 'tariq.m@ahmadtraders.pk',
-                    role: 'Manager',
-                    department: 'Operations & Management',
-                    phone: '03040402614',
-                  })
-                }
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded text-[11px] font-medium text-slate-700 transition"
-              >
-                Manager (Tariq)
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  applyPreset({
-                    name: 'Hamza Malik',
-                    email: 'hamza.sales@ahmadtraders.pk',
-                    role: 'Sales',
-                    department: 'Sales & Order Booking',
-                    phone: '03001234567',
-                  })
-                }
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded text-[11px] font-medium text-slate-700 transition"
-              >
-                Sales (Hamza)
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  applyPreset({
-                    name: 'Usman Ghani',
-                    email: 'usman.accounts@ahmadtraders.pk',
-                    role: 'Accounts',
-                    department: 'Finance & Recovery',
-                    phone: '03217654321',
-                  })
-                }
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded text-[11px] font-medium text-slate-700 transition"
-              >
-                Accounts (Usman)
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  applyPreset({
-                    name: 'Bilal Ahmed',
-                    email: 'bilal.wh@ahmadtraders.pk',
-                    role: 'Inventory',
-                    department: 'Warehouse & Logistics',
-                    phone: '03339876543',
-                  })
-                }
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded text-[11px] font-medium text-slate-700 transition"
-              >
-                Inventory (Bilal)
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Admin (Ahmad Raza)</span>
               </button>
             </div>
           </div>
@@ -620,10 +561,6 @@ SELECT public.create_erp_user(
                 className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               >
                 <option value="Admin">Admin (Full Control)</option>
-                <option value="Manager">Manager (Operations & Approval)</option>
-                <option value="Sales">Sales (Orders & Clients)</option>
-                <option value="Accounts">Accounts (Ledgers & Payments)</option>
-                <option value="Inventory">Inventory (Stock & Warehouse)</option>
               </select>
             </div>
 
@@ -868,11 +805,7 @@ SELECT public.create_erp_user(
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as StaffRole })}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900"
               >
-                <option value="Admin">Admin</option>
-                <option value="Manager">Manager</option>
-                <option value="Sales">Sales</option>
-                <option value="Accounts">Accounts</option>
-                <option value="Inventory">Inventory</option>
+                <option value="Admin">Admin (Full Control)</option>
               </select>
             </div>
 

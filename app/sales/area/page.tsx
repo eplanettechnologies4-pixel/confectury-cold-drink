@@ -30,7 +30,7 @@ type DateFilterType = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom
 export default function AreaWiseSalesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { areas, clients, orders, payments, salesReturns, recordPayment } = useAppState();
+  const { areas, clients, orders, payments, salesReturns, recordPayment, currentUser } = useAppState();
 
   const initialAreaName = searchParams.get('area') || areas[0]?.name || 'Madina Town';
   const [selectedAreaName, setSelectedAreaName] = useState<string>(initialAreaName);
@@ -165,7 +165,7 @@ export default function AreaWiseSalesPage() {
       paymentMethod: collectMethod,
       referenceNumber: `CASH-${Date.now().toString().slice(-4)}`,
       notes: collectNotes,
-      recordedBy: 'Hamza Farooq',
+      recordedBy: currentUser?.name || 'Ahmad Raza',
     });
 
     setCollectTargetClient(null);
@@ -263,7 +263,7 @@ export default function AreaWiseSalesPage() {
           )}
 
           <div className="text-[11px] text-slate-500 font-mono">
-            Route Rep: <span className="font-bold text-slate-800">{selectedArea?.assignedSalesperson || 'Hamza Farooq'}</span>
+            Route Rep: <span className="font-bold text-slate-800">{selectedArea?.assignedSalesperson || 'Ahmad Raza'}</span>
           </div>
         </div>
       </div>
@@ -593,7 +593,7 @@ export default function AreaWiseSalesPage() {
               <label className="block font-semibold text-slate-700 mb-1">Receipt Notes / Reference</label>
               <input
                 type="text"
-                placeholder="e.g. Route recovery collected by Hamza Farooq"
+                placeholder="e.g. Route recovery collected by Ahmad Raza"
                 value={collectNotes}
                 onChange={e => setCollectNotes(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"

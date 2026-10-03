@@ -204,7 +204,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return null;
       }
       const stored = localStorage.getItem('ahmad_current_user');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return {
+          id: '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
+          name: parsed.name || 'Ahmad Raza',
+          email: parsed.email || 'ahmad.raza@ahmadtraders.pk',
+          role: 'Admin' as const,
+          department: parsed.department || 'Executive Management',
+          avatarUrl: parsed.avatarUrl || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+        };
+      }
     } catch (e) {
       console.error('Failed to load user session:', e);
     }
@@ -301,9 +311,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return loadStored<DamagedStockRecord[]>('ahmad_damaged_stock', 'eplanet_damaged_stock', INITIAL_DAMAGED_STOCK);
   });
 
-  // Staff
+  // Staff - strictly maintained as the single Admin user
   const [staff, setStaff] = useState<Staff[]>(() => {
-    return loadStored<Staff[]>('ahmad_staff', 'eplanet_staff', INITIAL_STAFF);
+    const loaded = loadStored<Staff[]>('ahmad_staff', 'eplanet_staff', INITIAL_STAFF);
+    if (!Array.isArray(loaded) || loaded.length !== 1 || loaded[0]?.id !== '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf') {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('ahmad_staff', JSON.stringify(INITIAL_STAFF));
+      }
+      return INITIAL_STAFF;
+    }
+    return loaded;
   });
 
   // Audit Logs
@@ -350,22 +367,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const login = (emailOrUser: string | User, role?: string) => {
     let newUser: User;
     if (typeof emailOrUser === 'object' && emailOrUser !== null) {
-      newUser = emailOrUser;
+      newUser = {
+        ...emailOrUser,
+        id: emailOrUser.id || '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
+        role: 'Admin',
+      };
     } else {
       const email = emailOrUser;
       const matched = staff.find(s => s.email.toLowerCase() === email.toLowerCase());
-      const userRole = (role as User['role']) || matched?.role || 'Admin';
       newUser = {
-        id: matched?.id || 'stf-user',
+        id: matched?.id || '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
         name: matched?.name || email.split('@')[0].replace('.', ' ').toUpperCase(),
         email: email,
-        role: userRole,
-        department: matched?.department || 'Management',
+        role: 'Admin',
+        department: matched?.department || 'Executive Management',
         avatarUrl: matched?.avatarUrl,
       };
     }
     setCurrentUser(newUser);
-    addAuditLog('User Login', 'System', newUser.name, `User ${newUser.email} signed in with role ${newUser.role}`);
+    addAuditLog('User Login', 'System', newUser.name, `User ${newUser.email} signed in with role Admin`);
     return true;
   };
 
