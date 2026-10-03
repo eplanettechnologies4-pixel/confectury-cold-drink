@@ -305,7 +305,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {currentUser?.name.charAt(0) || 'A'}
               </div>
               <div className="truncate">
-                <p className="text-xs font-semibold text-white truncate">{currentUser?.name || 'Ahmad Raza'}</p>
+                <p className="text-xs font-semibold text-white truncate">{currentUser?.name || 'Admin'}</p>
                 <p className="text-[10px] text-emerald-400 truncate">{currentUser?.role || 'Admin'} • Faisalabad</p>
               </div>
             </div>

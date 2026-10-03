@@ -208,11 +208,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const parsed = JSON.parse(stored);
         return {
           id: '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
-          name: parsed.name || 'Ahmad Raza',
-          email: parsed.email || 'ahmad.raza@ahmadtraders.pk',
+          name: parsed.name && parsed.name !== 'Ahmad Raza' ? parsed.name : 'Admin',
+          email: parsed.email && !parsed.email.includes('ahmad.raza') ? parsed.email : 'admin@ahmadtraders.pk',
           role: 'Admin' as const,
           department: parsed.department || 'Executive Management',
-          avatarUrl: parsed.avatarUrl || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+          avatarUrl: parsed.avatarUrl,
         };
       }
     } catch (e) {

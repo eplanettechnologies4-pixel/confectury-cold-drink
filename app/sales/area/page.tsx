@@ -165,7 +165,7 @@ export default function AreaWiseSalesPage() {
       paymentMethod: collectMethod,
       referenceNumber: `CASH-${Date.now().toString().slice(-4)}`,
       notes: collectNotes,
-      recordedBy: currentUser?.name || 'Ahmad Raza',
+      recordedBy: currentUser?.name || 'Admin',
     });
 
     setCollectTargetClient(null);
@@ -263,7 +263,7 @@ export default function AreaWiseSalesPage() {
           )}
 
           <div className="text-[11px] text-slate-500 font-mono">
-            Route Rep: <span className="font-bold text-slate-800">{selectedArea?.assignedSalesperson || 'Ahmad Raza'}</span>
+            Route Rep: <span className="font-bold text-slate-800">{selectedArea?.assignedSalesperson || 'Admin'}</span>
           </div>
         </div>
       </div>
@@ -593,7 +593,7 @@ export default function AreaWiseSalesPage() {
               <label className="block font-semibold text-slate-700 mb-1">Receipt Notes / Reference</label>
               <input
                 type="text"
-                placeholder="e.g. Route recovery collected by Ahmad Raza"
+                placeholder="e.g. Route recovery collected by Admin"
                 value={collectNotes}
                 onChange={e => setCollectNotes(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"

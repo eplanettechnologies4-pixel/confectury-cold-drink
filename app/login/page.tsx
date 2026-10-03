@@ -80,7 +80,7 @@ export default function LoginPage() {
             .eq('user_id', data.user.id)
             .maybeSingle();
 
-          const userName = profile?.name || data.user.user_metadata?.name || 'Ahmad Raza';
+          const userName = profile?.name || data.user.user_metadata?.name || 'Admin';
 
           const authenticatedUser: User = {
             id: profile?.user_id || data.user.id || '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
@@ -105,22 +105,14 @@ export default function LoginPage() {
     setTimeout(() => {
       login({
         id: '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
-        name: 'Ahmad Raza',
+        name: 'Admin',
         email: cleanEmail,
         role: 'Admin',
         department: 'Executive Management',
-        avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
       });
       setIsLoading(false);
       router.push('/dashboard');
     }, 350);
-  };
-
-  const setDemoUser = (demoEmail: string, role: string = 'Admin') => {
-    setEmail(demoEmail);
-    setPassword('AhmadTraders2026!');
-    setSelectedRole('Admin');
-    setError('');
   };
 
   return (
@@ -187,7 +179,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="ahmad.raza@ahmadtraders.pk"
+                placeholder="Enter your email address"
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition"
                 required
               />
@@ -204,7 +196,7 @@ export default function LoginPage() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Enter your password"
                 className="w-full pl-9 pr-10 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition"
                 required
               />
@@ -247,40 +239,6 @@ export default function LoginPage() {
             )}
           </button>
         </form>
-
-        {/* Quick Credentials Preset - Admin Only */}
-        <div className="mt-6 pt-5 border-t border-slate-800">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold text-slate-400 flex items-center">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 mr-1" /> Authorized ERP Login:
-            </span>
-            <span className="text-[10px] font-mono text-emerald-400/80 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">
-              Role: Admin
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setDemoUser('ahmad.raza@ahmadtraders.pk', 'Admin')}
-            className="w-full p-3 bg-slate-950 hover:bg-slate-850 hover:border-emerald-500/50 border border-slate-800 rounded-xl transition flex items-center justify-between group cursor-pointer"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-xs">
-                AR
-              </div>
-              <div className="text-left">
-                <span className="block text-xs font-bold text-white group-hover:text-emerald-400 transition">
-                  Admin (Ahmad Raza)
-                </span>
-                <span className="block text-[11px] text-slate-400 font-mono">
-                  ahmad.raza@ahmadtraders.pk
-                </span>
-              </div>
-            </div>
-            <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/80 border border-emerald-700/60 px-2.5 py-1 rounded-lg">
-              Autofill &rarr;
-            </span>
-          </button>
-        </div>
       </div>
 
       <p className="text-xs text-slate-500 mt-6 text-center">

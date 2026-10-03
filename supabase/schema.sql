@@ -548,7 +548,7 @@ CREATE TRIGGER on_auth_user_created
 
 -- C. Stored Procedure: create_erp_user
 -- Allows creating a complete Supabase Auth user + Staff profile directly via SQL Editor in 1 call:
--- Example: SELECT public.create_erp_user('ahmad.raza@ahmadtraders.pk', 'AhmadTraders2026!', 'Ahmad Raza', 'Admin', 'Management', '03057165320');
+-- Example: SELECT public.create_erp_user('admin@ahmadtraders.pk', 'AdminPassword123!', 'Admin', 'Admin', 'Management', '');
 CREATE OR REPLACE FUNCTION public.create_erp_user(
   p_email TEXT,
   p_password TEXT,

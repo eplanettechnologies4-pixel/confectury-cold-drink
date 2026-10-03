@@ -175,7 +175,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               </div>
               <div className="hidden sm:block text-left">
                 <span className="block text-xs font-semibold text-slate-800 leading-tight">
-                  {currentUser?.name || 'Ahmad Raza'}
+                  {currentUser?.name || 'Admin'}
                 </span>
                 <span className="block text-[10px] font-medium text-brand-600">
                   {currentUser?.role || 'Admin'}
@@ -186,8 +186,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             {isProfileOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-erp-dropdown py-2 z-50 text-xs">
                 <div className="px-4 py-2 border-b border-slate-100">
-                  <p className="font-semibold text-slate-900">{currentUser?.name || 'Ahmad Raza'}</p>
-                  <p className="text-slate-500 text-[11px] truncate">{currentUser?.email || 'ahmad.raza@ahmadtraders.pk'}</p>
+                  <p className="font-semibold text-slate-900">{currentUser?.name || 'Admin'}</p>
+                  <p className="text-slate-500 text-[11px] truncate">{currentUser?.email || 'admin@ahmadtraders.pk'}</p>
                 </div>
 
                 {/* Active Admin Role Status */}

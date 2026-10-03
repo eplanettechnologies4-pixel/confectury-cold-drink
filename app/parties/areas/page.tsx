@@ -17,7 +17,7 @@ export default function AreasManagementPage() {
     code: '',
     name: '',
     description: '',
-    assignedSalesperson: 'Ahmad Raza',
+    assignedSalesperson: 'Admin',
     status: 'Active' as 'Active' | 'Inactive',
   });
 
@@ -27,7 +27,7 @@ export default function AreasManagementPage() {
       code: `ARA-${areas.length + 1}`,
       name: '',
       description: '',
-      assignedSalesperson: 'Ahmad Raza',
+      assignedSalesperson: 'Admin',
       status: 'Active',
     });
     setIsModalOpen(true);
@@ -230,7 +230,7 @@ export default function AreasManagementPage() {
             <label className="block font-semibold text-slate-700 mb-1">Assigned Salesperson / Route Representative</label>
             <input
               type="text"
-              placeholder="e.g. Ahmad Raza"
+              placeholder="e.g. Admin"
               value={formData.assignedSalesperson}
               onChange={e => setFormData({ ...formData, assignedSalesperson: e.target.value })}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"

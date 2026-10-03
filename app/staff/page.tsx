@@ -44,12 +44,12 @@ export default function StaffPage() {
 
   // Supabase User Creation Form Data
   const [supabaseUser, setSupabaseUser] = useState({
-    name: 'Ahmad Raza',
-    email: 'ahmad.raza@ahmadtraders.pk',
+    name: 'Admin',
+    email: 'admin@ahmadtraders.pk',
     password: 'AhmadTraders2026!',
     role: 'Admin' as StaffRole,
     department: 'Executive Management',
-    phone: '03057165320',
+    phone: '',
   });
 
   const [activeSupabaseTab, setActiveSupabaseTab] = useState<'sql' | 'api' | 'guide'>('sql');
@@ -465,7 +465,7 @@ SELECT public.create_erp_user(
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Active Admin Account</span>
-          <span className="text-base font-extrabold text-slate-800 truncate block mt-1">Ahmad Raza</span>
+          <span className="text-base font-extrabold text-slate-800 truncate block mt-1">{staff[0]?.name || 'Admin'}</span>
         </div>
       </div>
 
@@ -500,17 +500,17 @@ SELECT public.create_erp_user(
                 type="button"
                 onClick={() =>
                   applyPreset({
-                    name: 'Ahmad Raza',
-                    email: 'ahmad.raza@ahmadtraders.pk',
+                    name: 'Admin',
+                    email: 'admin@ahmadtraders.pk',
                     role: 'Admin',
                     department: 'Executive Management',
-                    phone: '03057165320',
+                    phone: '',
                   })
                 }
                 className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded text-[11px] font-semibold text-emerald-800 transition flex items-center space-x-1.5"
               >
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Admin (Ahmad Raza)</span>
+                <span>Admin User</span>
               </button>
             </div>
           </div>
@@ -524,7 +524,7 @@ SELECT public.create_erp_user(
                 value={supabaseUser.name}
                 onChange={(e) => setSupabaseUser({ ...supabaseUser, name: e.target.value })}
                 className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                placeholder="e.g. Ahmad Raza"
+                placeholder="e.g. Admin"
                 required
               />
             </div>

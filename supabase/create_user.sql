@@ -216,10 +216,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 UPDATE auth.users
 SET 
   raw_user_meta_data = jsonb_build_object(
-    'name', COALESCE(raw_user_meta_data->>'name', 'Ahmad Raza'),
+    'name', COALESCE(raw_user_meta_data->>'name', 'Admin'),
     'role', 'Admin',
-    'department', 'Executive Management',
-    'phone', COALESCE(raw_user_meta_data->>'phone', '03057165320'),
+    'department', COALESCE(raw_user_meta_data->>'department', 'Executive Management'),
+    'phone', COALESCE(raw_user_meta_data->>'phone', ''),
     'employee_id', 'EMP-001'
   ),
   updated_at = NOW()
@@ -238,9 +238,9 @@ INSERT INTO public.staff_profiles (
 ) VALUES (
   '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf',
   'EMP-001',
-  'Ahmad Raza',
+  (SELECT COALESCE(raw_user_meta_data->>'name', 'Admin') FROM auth.users WHERE id = '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf'),
   (SELECT email FROM auth.users WHERE id = '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf'),
-  '03057165320',
+  (SELECT COALESCE(raw_user_meta_data->>'phone', '') FROM auth.users WHERE id = '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf'),
   'Admin',
   'Executive Management',
   'Active'
