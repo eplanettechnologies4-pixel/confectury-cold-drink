@@ -281,14 +281,25 @@ export async function POST(req: Request) {
       }
 
       if (entity === 'supplier') {
-        await supabase.from('supplier_payments').delete().eq('supplier_id', targetId);
+        // 1. Delete purchase returns referencing this supplier directly
         await supabase.from('purchase_returns').delete().eq('supplier_id', targetId);
+        // 2. Delete supplier payments
+        await supabase.from('supplier_payments').delete().eq('supplier_id', targetId);
+        // 3. Find purchases from this supplier
         const { data: suppPurchases } = await supabase.from('purchases').select('id').eq('supplier_id', targetId);
         if (suppPurchases && suppPurchases.length > 0) {
           const pIds = suppPurchases.map((p: any) => p.id);
+          // Delete purchase returns referencing these purchases
+          await supabase.from('purchase_returns').delete().in('purchase_id', pIds);
+          // Delete purchase items for these purchases
           await supabase.from('purchase_items').delete().in('purchase_id', pIds);
+          // Delete the purchases
           await supabase.from('purchases').delete().eq('supplier_id', targetId);
         }
+        // 4. Nullify supplier_id on products referencing this supplier
+        await supabase.from('products').update({ supplier_id: null }).eq('supplier_id', targetId);
+
+        // 5. Delete supplier
         const { error } = await supabase.from('suppliers').delete().eq('id', targetId);
         if (error) throw error;
         return NextResponse.json({ success: true, deletedId: targetId });

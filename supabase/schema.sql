@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS public.suppliers (
 CREATE TABLE IF NOT EXISTS public.supplier_payments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   payment_number TEXT UNIQUE NOT NULL,
-  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE CASCADE,
   payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
   amount NUMERIC(12, 2) NOT NULL,
   payment_method TEXT NOT NULL CHECK (payment_method IN ('Cash', 'Bank Transfer', 'Cheque', 'Other')),
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS public.supplier_payments (
 CREATE TABLE IF NOT EXISTS public.purchases (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   invoice_number TEXT UNIQUE NOT NULL,
-  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE CASCADE,
   purchase_date DATE NOT NULL DEFAULT CURRENT_DATE,
   subtotal NUMERIC(12, 2) NOT NULL,
   discount NUMERIC(12, 2) DEFAULT 0.00,
@@ -169,8 +169,8 @@ CREATE TABLE IF NOT EXISTS public.purchase_items (
 CREATE TABLE IF NOT EXISTS public.purchase_returns (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   return_number TEXT UNIQUE NOT NULL,
-  purchase_id UUID REFERENCES public.purchases(id) ON DELETE RESTRICT,
-  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  purchase_id UUID REFERENCES public.purchases(id) ON DELETE CASCADE,
+  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE CASCADE,
   product_id UUID REFERENCES public.products(id) ON DELETE RESTRICT,
   quantity INT NOT NULL,
   unit TEXT NOT NULL,

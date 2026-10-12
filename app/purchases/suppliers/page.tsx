@@ -12,6 +12,8 @@ import {
   MapPin,
   CheckCircle,
   Eye,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { DataTable, Column } from '@/components/ui/DataTable';
@@ -20,12 +22,13 @@ import { Supplier } from '@/types';
 import { formatPKR, formatDateDDMMYYYY, getTodayKarachiDate, BUSINESS_CONFIG } from '@/lib/utils';
 
 export default function SuppliersManagementPage() {
-  const { suppliers, addSupplier, updateSupplier, purchases, purchaseReturns, supplierPayments, recordSupplierPayment, currentUser } = useAppState();
+  const { suppliers, addSupplier, updateSupplier, deleteSupplier, purchases, purchaseReturns, supplierPayments, recordSupplierPayment, currentUser } = useAppState();
 
   const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [statementSupplier, setStatementSupplier] = useState<Supplier | null>(null);
   const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
 
   // Supplier Form State
   const [supplierFormData, setSupplierFormData] = useState({
@@ -183,6 +186,13 @@ export default function SuppliersManagementPage() {
             title="Edit Supplier"
           >
             <Edit3 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setSupplierToDelete(s)}
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
+            title="Delete Supplier"
+          >
+            <Trash2 className="h-4 w-4" />
           </button>
         </div>
       ),
@@ -495,6 +505,69 @@ export default function SuppliersManagementPage() {
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold"
               >
                 Close Statement
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Delete Supplier Confirmation Modal */}
+      {supplierToDelete && (
+        <Modal
+          isOpen={!!supplierToDelete}
+          onClose={() => setSupplierToDelete(null)}
+          title="Delete Supplier"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3 text-rose-600 bg-rose-50 p-3.5 rounded-xl border border-rose-200">
+              <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600" />
+              <div className="text-xs text-rose-800">
+                <p className="font-bold text-rose-950">Are you sure you want to delete this supplier?</p>
+                <p className="mt-1 leading-relaxed text-rose-800">
+                  You are about to delete <span className="font-bold text-rose-950">{supplierToDelete.name}</span> ({supplierToDelete.supplierId}). 
+                  Associated supplier records and payable balances will be safely cleaned up.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between text-slate-600">
+                <span>Supplier ID:</span>
+                <span className="font-mono font-semibold text-slate-800">{supplierToDelete.supplierId}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Contact Person:</span>
+                <span className="font-semibold text-slate-800">{supplierToDelete.contactPerson}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Phone:</span>
+                <span className="font-mono text-slate-700">{supplierToDelete.phone}</span>
+              </div>
+              <div className="flex justify-between text-slate-600 pt-1 border-t border-slate-200">
+                <span>Current Outstanding Payable:</span>
+                <span className={`font-mono font-black ${supplierToDelete.currentPayable > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {formatPKR(supplierToDelete.currentPayable)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setSupplierToDelete(null)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteSupplier(supplierToDelete.id);
+                  setSupplierToDelete(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
+              >
+                Yes, Delete Supplier
               </button>
             </div>
           </div>

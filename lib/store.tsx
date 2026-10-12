@@ -82,6 +82,7 @@ interface AppStateContextType {
   suppliers: Supplier[];
   addSupplier: (supplierData: Omit<Supplier, 'id' | 'supplierId' | 'currentPayable' | 'createdAt'>) => Supplier;
   updateSupplier: (id: string, supplierData: Partial<Supplier>) => void;
+  deleteSupplier: (id: string) => void;
   supplierPayments: SupplierPayment[];
   recordSupplierPayment: (paymentData: Omit<SupplierPayment, 'id' | 'paymentNumber'>) => SupplierPayment;
 
@@ -827,6 +828,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = suppliers.find(s => s.id === id);
     if (target) syncMutation('supplier', 'upsert', { ...target, ...supplierData });
     addAuditLog('Updated Supplier', 'Purchases', id, `Updated supplier attributes`);
+  };
+
+  const deleteSupplier = (id: string) => {
+    const target = suppliers.find(s => s.id === id);
+    setSuppliers(prev => {
+      const updated = prev.filter(s => s.id !== id);
+      try { localStorage.setItem('ahmad_suppliers', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
+    syncMutation('supplier', 'delete', undefined, id);
+    addAuditLog('Deleted Supplier', 'Purchases', target?.supplierId || id, `Deleted supplier ${target?.name || id}`);
   };
 
   const recordSupplierPayment = (paymentData: Omit<SupplierPayment, 'id' | 'paymentNumber'>): SupplierPayment => {
@@ -1889,6 +1901,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         suppliers,
         addSupplier,
         updateSupplier,
+        deleteSupplier,
         supplierPayments,
         recordSupplierPayment,
         purchases,
