@@ -1,18 +1,23 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Printer, FileText, Store, MapPin, Phone, Receipt } from 'lucide-react';
+import { ArrowLeft, Printer, FileText, Store, MapPin, Phone, Receipt, RotateCcw } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { Modal } from '@/components/ui/Modal';
 import { formatPKR, formatDateDDMMYYYY, BUSINESS_CONFIG } from '@/lib/utils';
 
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = params?.id as string;
-  const { orders, clients } = useAppState();
+  const { orders, clients, returnSale } = useAppState();
+
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [returnReason, setReturnReason] = useState('Customer returned goods from route');
+  const [isResalable, setIsResalable] = useState(true);
 
   const order = orders.find(o => o.id === orderId || o.orderNumber === orderId);
   const client = clients.find(c => c.id === order?.clientId);
@@ -49,6 +54,15 @@ export default function OrderDetailsPage() {
         </div>
 
         <div className="flex items-center space-x-2">
+          {order.status !== 'Returned' && (
+            <button
+              onClick={() => setIsReturnModalOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg shadow-xs transition"
+            >
+              <RotateCcw className="h-4 w-4 text-rose-600" />
+              <span>Return Sale</span>
+            </button>
+          )}
           <Link
             href={`/orders/${order.id}/receipt`}
             className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-xs transition"
@@ -65,6 +79,15 @@ export default function OrderDetailsPage() {
           </button>
         </div>
       </div>
+
+      {order.status === 'Returned' && (
+        <div className="p-4 bg-purple-50 border border-purple-200 text-purple-900 rounded-xl text-xs flex items-center space-x-2 print:hidden">
+          <RotateCcw className="h-5 w-5 text-purple-600 shrink-0" />
+          <span>
+            <strong>Sale Returned:</strong> This sale has been returned & refunded. It has been automatically removed from active Daily Sales.
+          </span>
+        </div>
+      )}
 
       {/* Official Commercial Invoice Printable Document */}
       <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-erp print-card space-y-6">
@@ -193,6 +216,82 @@ export default function OrderDetailsPage() {
           </div>
         </div>
       </div>
+
+      {/* Return Sale Modal */}
+      <Modal
+        isOpen={isReturnModalOpen}
+        onClose={() => setIsReturnModalOpen(false)}
+        title={`Return Sale Invoice #${order.orderNumber}`}
+        maxWidth="max-w-md"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            try {
+              returnSale(order.id, {
+                reason: returnReason,
+                isResalable,
+              });
+              setIsReturnModalOpen(false);
+              router.push('/orders');
+            } catch (err: any) {
+              alert(err?.message || 'Error returning sale');
+            }
+          }}
+          className="space-y-4 text-xs"
+        >
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900">
+            <p className="font-bold flex items-center">
+              <RotateCcw className="h-4 w-4 mr-1.5 text-amber-700" />
+              Confirm Return for #{order.orderNumber}
+            </p>
+            <p className="text-[11px] text-amber-800 mt-1">
+              Returning this sale will restock all inventory items, reverse customer balance, and <strong>automatically remove this invoice from Daily Sales</strong>.
+            </p>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Stock Condition *</label>
+            <select
+              value={isResalable ? 'true' : 'false'}
+              onChange={(e) => setIsResalable(e.target.value === 'true')}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
+            >
+              <option value="true">Saleable (Add back to Active Stock)</option>
+              <option value="false">Damaged / Broken (Record in Damage Loss)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Return Reason *</label>
+            <input
+              type="text"
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+              placeholder="e.g. Excess stock returned, route delivery rejected"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+              required
+            />
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2">
+            <button
+              type="button"
+              onClick={() => setIsReturnModalOpen(false)}
+              className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-xs flex items-center space-x-1.5"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>Confirm & Return to Stock</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

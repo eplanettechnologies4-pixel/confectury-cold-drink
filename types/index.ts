@@ -202,7 +202,7 @@ export interface OrderItem {
   total: number;
 }
 
-export type OrderStatus = 'Draft' | 'Pending' | 'Confirmed' | 'Delivered' | 'Cancelled' | 'Posted' | 'Reversed';
+export type OrderStatus = 'Draft' | 'Pending' | 'Confirmed' | 'Delivered' | 'Cancelled' | 'Posted' | 'Reversed' | 'Returned';
 
 export interface Order {
   id: string;
@@ -317,7 +317,7 @@ export interface Purchase {
   remainingPayable: number;
   paymentMethod: 'Cash' | 'Credit' | 'Partial';
   paymentStatus?: 'Paid' | 'Partially Paid' | 'Unpaid';
-  status: 'Draft' | 'Posted' | 'Cancelled';
+  status: 'Draft' | 'Posted' | 'Cancelled' | 'Returned';
   notes?: string;
   createdAt: string;
 }

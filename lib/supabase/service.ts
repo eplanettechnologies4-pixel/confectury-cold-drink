@@ -318,6 +318,11 @@ export const mappers = {
 
   // PURCHASES
   purchaseToDb(p: Purchase) {
+    const isReturned = p.status === 'Returned';
+    let notes = p.notes || null;
+    if (isReturned && (!notes || !notes.includes('[RETURNED]'))) {
+      notes = notes ? `${notes} [RETURNED]` : '[RETURNED]';
+    }
     return {
       id: ensureUUID(p.id, '50000001'),
       invoice_number: p.invoiceNumber,
@@ -330,12 +335,13 @@ export const mappers = {
       amount_paid: Number(p.amountPaid) || 0,
       remaining_payable: Number(p.remainingPayable) || 0,
       payment_method: p.paymentMethod || 'Cash',
-      status: p.status || 'Draft',
-      notes: p.notes || null,
+      status: isReturned ? 'Cancelled' : (p.status || 'Draft'),
+      notes,
       created_at: p.createdAt ? new Date(p.createdAt).toISOString() : new Date().toISOString(),
     };
   },
   purchaseFromDb(row: any, items: PurchaseItem[] = [], suppliersMap?: Map<string, string>): Purchase {
+    const isReturned = row.status === 'Cancelled' || (typeof row.notes === 'string' && row.notes.includes('[RETURNED]'));
     return {
       id: row.id,
       invoiceNumber: row.invoice_number,
@@ -349,7 +355,7 @@ export const mappers = {
       amountPaid: Number(row.amount_paid) || 0,
       remainingPayable: Number(row.remaining_payable) || 0,
       paymentMethod: row.payment_method || 'Cash',
-      status: row.status,
+      status: isReturned ? 'Returned' : (row.status || 'Draft'),
       notes: row.notes || '',
       createdAt: row.created_at ? row.created_at.split('T')[0] : '',
       items,
@@ -391,6 +397,11 @@ export const mappers = {
 
   // ORDERS
   orderToDb(o: Order) {
+    const isReturned = o.status === 'Returned';
+    let notes = o.notes || null;
+    if (isReturned && (!notes || !notes.includes('[RETURNED]'))) {
+      notes = notes ? `${notes} [RETURNED]` : '[RETURNED]';
+    }
     return {
       id: ensureUUID(o.id, '60000001'),
       order_number: o.orderNumber,
@@ -406,15 +417,16 @@ export const mappers = {
       grand_total: Number(o.grandTotal) || 0,
       amount_paid: Number(o.amountPaid) || 0,
       amount_remaining: Number(o.amountRemaining) || 0,
-      status: o.status || 'Posted',
+      status: isReturned ? 'Cancelled' : (o.status || 'Posted'),
       payment_method: o.paymentMethod || 'Cash',
       payment_status: o.paymentStatus || 'Unpaid',
-      notes: o.notes || null,
+      notes,
       created_at: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
     };
   },
   orderFromDb(row: any, items: OrderItem[] = [], clientsMap?: Map<string, any>): Order {
     const clt = clientsMap ? clientsMap.get(row.client_id) : null;
+    const isReturned = row.status === 'Cancelled' || (typeof row.notes === 'string' && row.notes.includes('[RETURNED]'));
     return {
       id: row.id,
       orderNumber: row.order_number,
@@ -432,7 +444,7 @@ export const mappers = {
       grandTotal: Number(row.grand_total) || 0,
       amountPaid: Number(row.amount_paid) || 0,
       amountRemaining: Number(row.amount_remaining) || 0,
-      status: row.status,
+      status: isReturned ? 'Returned' : (row.status || 'Posted'),
       paymentMethod: row.payment_method || 'Cash',
       paymentStatus: row.payment_status || 'Unpaid',
       notes: row.notes || '',

@@ -12,25 +12,32 @@ import { formatPKR, formatDateDDMMYYYY, getTodayKarachiDate } from '@/lib/utils'
 export default function SalesReturnsPage() {
   const { salesReturns, recordSalesReturn, orders, clients, products } = useAppState();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Only active/non-returned orders can be returned
+  const eligibleOrders = orders.filter(o => o.status !== 'Returned');
 
   const [formData, setFormData] = useState({
-    orderId: orders[0]?.id || '',
-    orderNumber: orders[0]?.orderNumber || '',
-    clientId: orders[0]?.clientId || clients[0]?.id || '',
-    clientName: orders[0]?.companyName || clients[0]?.companyName || '',
-    productId: products[0]?.id || '',
-    productName: products[0]?.name || '',
+    orderId: eligibleOrders[0]?.id || '',
+    orderNumber: eligibleOrders[0]?.orderNumber || '',
+    clientId: eligibleOrders[0]?.clientId || clients[0]?.id || '',
+    clientName: eligibleOrders[0]?.companyName || clients[0]?.companyName || '',
+    productId: eligibleOrders[0]?.items[0]?.productId || products[0]?.id || '',
+    productName: eligibleOrders[0]?.items[0]?.productName || products[0]?.name || '',
     quantity: 1,
-    unit: products[0]?.unit || 'Carton',
-    batch: products[0]?.batchNumber || 'BATCH-01',
+    unit: eligibleOrders[0]?.items[0]?.unit || 'Carton',
+    batch: eligibleOrders[0]?.items[0]?.batch || 'BATCH-01',
     returnDate: getTodayKarachiDate(),
-    refundAmount: products[0]?.sellingPrice || 0,
+    refundAmount: eligibleOrders[0]?.items[0]?.unitPrice || products[0]?.sellingPrice || 0,
     isResalable: true,
-    reason: 'Customer overstocked / excess quantity',
+    reason: 'Customer overstocked / excess quantity return',
   });
 
+  const selectedOrder = eligibleOrders.find(o => o.id === formData.orderId);
+  const availableItems = selectedOrder?.items || [];
+
   const handleOpenAddModal = () => {
-    const defaultOrder = orders[0];
+    const defaultOrder = eligibleOrders[0];
     const defaultItem = defaultOrder?.items[0];
     const defaultProd = products.find(p => p.id === defaultItem?.productId) || products[0];
 
@@ -39,21 +46,21 @@ export default function SalesReturnsPage() {
       orderNumber: defaultOrder?.orderNumber || 'INV-8801',
       clientId: defaultOrder?.clientId || clients[0]?.id || '',
       clientName: defaultOrder?.companyName || clients[0]?.companyName || '',
-      productId: defaultProd?.id || '',
-      productName: defaultProd?.name || '',
+      productId: defaultItem?.productId || defaultProd?.id || '',
+      productName: defaultItem?.productName || defaultProd?.name || '',
       quantity: 1,
-      unit: defaultProd?.unit || 'Carton',
-      batch: defaultProd?.batchNumber || 'BATCH-01',
+      unit: defaultItem?.unit || defaultProd?.unit || 'Carton',
+      batch: defaultItem?.batch || defaultProd?.batchNumber || 'BATCH-01',
       returnDate: getTodayKarachiDate(),
-      refundAmount: defaultProd?.sellingPrice || 2400,
+      refundAmount: defaultItem?.unitPrice || defaultProd?.sellingPrice || 2400,
       isResalable: true,
-      reason: 'Excess stock return from route',
+      reason: 'Excess stock return from route distribution',
     });
     setIsModalOpen(true);
   };
 
   const handleOrderChange = (orderId: string) => {
-    const ord = orders.find(o => o.id === orderId);
+    const ord = eligibleOrders.find(o => o.id === orderId);
     if (!ord) return;
     const firstItem = ord.items[0];
     const prod = products.find(p => p.id === firstItem?.productId);
@@ -64,18 +71,21 @@ export default function SalesReturnsPage() {
       orderNumber: ord.orderNumber,
       clientId: ord.clientId,
       clientName: ord.companyName,
-      productId: firstItem?.productId || prev.productId,
-      productName: firstItem?.productName || prev.productName,
-      unit: firstItem?.unit || prev.unit,
-      batch: firstItem?.batch || prev.batch,
-      refundAmount: (firstItem?.unitPrice || 2000) * prev.quantity,
+      productId: firstItem?.productId || prod?.id || prev.productId,
+      productName: firstItem?.productName || prod?.name || prev.productName,
+      unit: firstItem?.unit || prod?.unit || prev.unit,
+      batch: firstItem?.batch || prod?.batchNumber || prev.batch,
+      refundAmount: (firstItem?.unitPrice || prod?.sellingPrice || 2000) * prev.quantity,
     }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     recordSalesReturn(formData);
+    const orderNum = formData.orderNumber;
     setIsModalOpen(false);
+    setToastMessage(`Sales Return for #${orderNum} recorded. Invoice is now automatically removed from Daily Sales.`);
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
   const columns: Column<SalesReturn>[] = [
@@ -114,7 +124,7 @@ export default function SalesReturnsPage() {
               : 'bg-rose-100 text-rose-800 border border-rose-200'
           }`}
         >
-          {r.isResalable ? 'Resalable (Added to Stock)' : 'Damaged (Added to Loss)'}
+          {r.isResalable ? 'Resalable (Restocked)' : 'Damaged (Written to Loss)'}
         </span>
       ),
     },
@@ -138,6 +148,19 @@ export default function SalesReturnsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center space-x-2">
+            <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+            <span className="font-semibold">{toastMessage}</span>
+          </div>
+          <button onClick={() => setToastMessage(null)} className="text-emerald-700 font-bold hover:underline ml-4">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -145,17 +168,31 @@ export default function SalesReturnsPage() {
             <RotateCcw className="h-5 w-5 mr-2 text-rose-600" /> Customer Sales Returns
           </h1>
           <p className="text-xs text-slate-500">
-            Process returned confectionery and beverages with accurate stock restocking or damaged loss write-offs.
+            Process returned confectionery and beverages with accurate stock restocking or damaged loss write-offs. Returned sales are automatically removed from Daily Sales.
           </p>
         </div>
 
         <button
           onClick={handleOpenAddModal}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+          disabled={eligibleOrders.length === 0}
+          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition disabled:opacity-50"
         >
           <Plus className="h-4 w-4" />
           <span>Record Sales Return</span>
         </button>
+      </div>
+
+      {/* Notice Banner */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Package className="h-4 w-4 text-blue-600 shrink-0" />
+          <span>
+            <strong>Automatic Removal Rule:</strong> When a sale invoice is returned, it is automatically removed from active Daily Sales and stock is restored.
+          </span>
+        </div>
+        <Link href="/orders" className="text-xs font-bold text-blue-700 hover:underline shrink-0 ml-4">
+          View Daily Sales &rarr;
+        </Link>
       </div>
 
       {/* Returns Data Table */}
@@ -174,19 +211,33 @@ export default function SalesReturnsPage() {
         maxWidth="max-w-lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900">
+            <p className="font-semibold flex items-center">
+              <AlertTriangle className="h-4 w-4 mr-1.5 text-amber-700" />
+              Automated Daily Sales Adjustment
+            </p>
+            <p className="text-[11px] text-amber-800 mt-0.5">
+              Posting this return will update customer receivables, restore inventory, and <strong>automatically remove this invoice from Daily Sales</strong>.
+            </p>
+          </div>
+
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Select Original Sales Invoice *</label>
-            <select
-              value={formData.orderId}
-              onChange={e => handleOrderChange(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium"
-            >
-              {orders.map(o => (
-                <option key={o.id} value={o.id}>
-                  {o.orderNumber} — {o.companyName} ({formatDateDDMMYYYY(o.orderDate)})
-                </option>
-              ))}
-            </select>
+            {eligibleOrders.length === 0 ? (
+              <p className="p-2 bg-slate-100 rounded text-slate-500 italic">No active sales invoices available to return.</p>
+            ) : (
+              <select
+                value={formData.orderId}
+                onChange={e => handleOrderChange(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium"
+              >
+                {eligibleOrders.map(o => (
+                  <option key={o.id} value={o.id}>
+                    {o.orderNumber} — {o.companyName} ({formatDateDDMMYYYY(o.orderDate)}) • Total: {formatPKR(o.grandTotal)}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -195,22 +246,33 @@ export default function SalesReturnsPage() {
               <select
                 value={formData.productId}
                 onChange={e => {
+                  const it = availableItems.find(item => item.productId === e.target.value);
                   const p = products.find(prod => prod.id === e.target.value);
+                  const unitPrice = it?.unitPrice || p?.sellingPrice || 2000;
                   setFormData({
                     ...formData,
                     productId: e.target.value,
-                    productName: p?.name || '',
-                    unit: p?.unit || 'Carton',
-                    refundAmount: (p?.sellingPrice || 2000) * formData.quantity,
+                    productName: it?.productName || p?.name || '',
+                    unit: it?.unit || p?.unit || 'Carton',
+                    batch: it?.batch || p?.batchNumber || 'BATCH-01',
+                    refundAmount: unitPrice * formData.quantity,
                   });
                 }}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
               >
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                {availableItems.length > 0 ? (
+                  availableItems.map(it => (
+                    <option key={it.productId} value={it.productId}>
+                      {it.productName} ({it.quantity} {it.unit})
+                    </option>
+                  ))
+                ) : (
+                  products.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -222,11 +284,13 @@ export default function SalesReturnsPage() {
                 value={formData.quantity}
                 onChange={e => {
                   const qty = Math.max(1, Number(e.target.value));
+                  const it = availableItems.find(item => item.productId === formData.productId);
                   const p = products.find(prod => prod.id === formData.productId);
+                  const unitPrice = it?.unitPrice || p?.sellingPrice || 2000;
                   setFormData({
                     ...formData,
                     quantity: qty,
-                    refundAmount: (p?.sellingPrice || 2000) * qty,
+                    refundAmount: unitPrice * qty,
                   });
                 }}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold"
@@ -265,7 +329,7 @@ export default function SalesReturnsPage() {
             <label className="block font-semibold text-slate-700 mb-1">Return Reason / Notes *</label>
             <input
               type="text"
-              placeholder="e.g. Overstocked, damaged packaging, or exchange"
+              placeholder="e.g. Overstocked, damaged packaging, route rejection"
               value={formData.reason}
               onChange={e => setFormData({ ...formData, reason: e.target.value })}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
@@ -285,7 +349,7 @@ export default function SalesReturnsPage() {
               type="submit"
               className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-semibold shadow-xs"
             >
-              Post Sales Return
+              Post Return & Remove Sale
             </button>
           </div>
         </form>

@@ -111,14 +111,34 @@ export async function GET() {
       mappers.supplierPaymentFromDb(row, suppliersMap)
     );
 
-    const purchases = (purchasesRes.data || []).map((p: any) =>
-      mappers.purchaseFromDb(p, purchaseItemsByPurchaseId.get(p.id) || [], suppliersMap)
+    // Identify returned purchases and sales orders
+    const returnedPurchaseIds = new Set<string>(
+      (purchaseReturnsRes.data || [])
+        .map((pr: any) => pr.purchase_id)
+        .filter(Boolean)
     );
+    const returnedOrderIds = new Set<string>(
+      (salesReturnsRes.data || [])
+        .map((sr: any) => sr.order_id)
+        .filter(Boolean)
+    );
+
+    const purchases = (purchasesRes.data || []).map((p: any) => {
+      const pur = mappers.purchaseFromDb(p, purchaseItemsByPurchaseId.get(p.id) || [], suppliersMap);
+      if (returnedPurchaseIds.has(p.id) || p.status === 'Cancelled' || (typeof p.notes === 'string' && p.notes.includes('[RETURNED]'))) {
+        pur.status = 'Returned';
+      }
+      return pur;
+    });
     const purchasesMap = new Map(purchases.map(p => [p.id, p]));
 
-    const orders = (ordersRes.data || []).map((o: any) =>
-      mappers.orderFromDb(o, orderItemsByOrderId.get(o.id) || [], clientsMap)
-    );
+    const orders = (ordersRes.data || []).map((o: any) => {
+      const ord = mappers.orderFromDb(o, orderItemsByOrderId.get(o.id) || [], clientsMap);
+      if (returnedOrderIds.has(o.id) || o.status === 'Cancelled' || (typeof o.notes === 'string' && o.notes.includes('[RETURNED]'))) {
+        ord.status = 'Returned';
+      }
+      return ord;
+    });
     const ordersMap = new Map(orders.map(o => [o.id, o]));
 
     const payments = (paymentsRes.data || []).map(row => mappers.paymentFromDb(row, clientsMap));
@@ -210,6 +230,70 @@ export async function POST(req: Request) {
 
     if (action === 'delete') {
       const targetId = ensureUUID(id || data?.id);
+
+      if (entity === 'product') {
+        // Cascade delete child records referencing this product
+        await supabase.from('sales_returns').delete().eq('product_id', targetId);
+        await supabase.from('purchase_returns').delete().eq('product_id', targetId);
+        await supabase.from('order_items').delete().eq('product_id', targetId);
+        await supabase.from('purchase_items').delete().eq('product_id', targetId);
+        await supabase.from('damaged_stock').delete().eq('product_id', targetId);
+        await supabase.from('expiry_records').delete().eq('product_id', targetId);
+        await supabase.from('daily_closing_items').delete().eq('product_id', targetId);
+        await supabase.from('inventory_transactions').delete().eq('product_id', targetId);
+
+        const { error } = await supabase.from('products').delete().eq('id', targetId);
+        if (error) throw error;
+        return NextResponse.json({ success: true, deletedId: targetId });
+      }
+
+      if (entity === 'order') {
+        await supabase.from('sales_returns').delete().eq('order_id', targetId);
+        await supabase.from('order_items').delete().eq('order_id', targetId);
+        const { error } = await supabase.from('orders').delete().eq('id', targetId);
+        if (error) throw error;
+        return NextResponse.json({ success: true, deletedId: targetId });
+      }
+
+      if (entity === 'purchase') {
+        await supabase.from('purchase_returns').delete().eq('purchase_id', targetId);
+        await supabase.from('purchase_items').delete().eq('purchase_id', targetId);
+        const { error } = await supabase.from('purchases').delete().eq('id', targetId);
+        if (error) throw error;
+        return NextResponse.json({ success: true, deletedId: targetId });
+      }
+
+      if (entity === 'client') {
+        await supabase.from('client_ledger').delete().eq('client_id', targetId);
+        await supabase.from('payments').delete().eq('client_id', targetId);
+        await supabase.from('bad_debt_recoveries').delete().eq('client_id', targetId);
+        await supabase.from('bad_debts').delete().eq('client_id', targetId);
+        await supabase.from('sales_returns').delete().eq('client_id', targetId);
+        const { data: clientOrders } = await supabase.from('orders').select('id').eq('client_id', targetId);
+        if (clientOrders && clientOrders.length > 0) {
+          const oIds = clientOrders.map((o: any) => o.id);
+          await supabase.from('order_items').delete().in('order_id', oIds);
+          await supabase.from('orders').delete().eq('client_id', targetId);
+        }
+        const { error } = await supabase.from('clients').delete().eq('id', targetId);
+        if (error) throw error;
+        return NextResponse.json({ success: true, deletedId: targetId });
+      }
+
+      if (entity === 'supplier') {
+        await supabase.from('supplier_payments').delete().eq('supplier_id', targetId);
+        await supabase.from('purchase_returns').delete().eq('supplier_id', targetId);
+        const { data: suppPurchases } = await supabase.from('purchases').select('id').eq('supplier_id', targetId);
+        if (suppPurchases && suppPurchases.length > 0) {
+          const pIds = suppPurchases.map((p: any) => p.id);
+          await supabase.from('purchase_items').delete().in('purchase_id', pIds);
+          await supabase.from('purchases').delete().eq('supplier_id', targetId);
+        }
+        const { error } = await supabase.from('suppliers').delete().eq('id', targetId);
+        if (error) throw error;
+        return NextResponse.json({ success: true, deletedId: targetId });
+      }
+
       const table = getTableName(entity);
       const { error } = await supabase.from(table).delete().eq('id', targetId);
       if (error) throw error;
@@ -366,6 +450,12 @@ export async function POST(req: Request) {
           const row = mappers.purchaseReturnToDb(data);
           const { error } = await supabase.from('purchase_returns').upsert(row);
           if (error) throw error;
+          if (row.purchase_id) {
+            const { data: pur } = await supabase.from('purchases').select('notes').eq('id', row.purchase_id).maybeSingle();
+            const curNotes = pur?.notes || '';
+            const newNotes = (curNotes + (curNotes.includes('[RETURNED]') ? '' : ' [RETURNED]')).trim();
+            await supabase.from('purchases').update({ status: 'Cancelled', notes: newNotes }).eq('id', row.purchase_id);
+          }
           return NextResponse.json({ success: true, id: row.id });
         }
 
@@ -373,6 +463,12 @@ export async function POST(req: Request) {
           const row = mappers.salesReturnToDb(data);
           const { error } = await supabase.from('sales_returns').upsert(row);
           if (error) throw error;
+          if (row.order_id) {
+            const { data: ord } = await supabase.from('orders').select('notes').eq('id', row.order_id).maybeSingle();
+            const curNotes = ord?.notes || '';
+            const newNotes = (curNotes + (curNotes.includes('[RETURNED]') ? '' : ' [RETURNED]')).trim();
+            await supabase.from('orders').update({ status: 'Cancelled', notes: newNotes }).eq('id', row.order_id);
+          }
           return NextResponse.json({ success: true, id: row.id });
         }
 

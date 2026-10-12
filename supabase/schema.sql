@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS public.purchases (
   amount_paid NUMERIC(12, 2) DEFAULT 0.00,
   remaining_payable NUMERIC(12, 2) NOT NULL,
   payment_method TEXT NOT NULL CHECK (payment_method IN ('Cash', 'Credit', 'Partial')),
-  status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Posted', 'Cancelled')),
+  status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Posted', 'Cancelled', 'Returned')),
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
   grand_total NUMERIC(12, 2) NOT NULL,
   amount_paid NUMERIC(12, 2) DEFAULT 0.00,
   amount_remaining NUMERIC(12, 2) NOT NULL,
-  status TEXT NOT NULL DEFAULT 'Posted' CHECK (status IN ('Draft', 'Pending', 'Confirmed', 'Delivered', 'Cancelled', 'Posted', 'Reversed')),
+  status TEXT NOT NULL DEFAULT 'Posted' CHECK (status IN ('Draft', 'Pending', 'Confirmed', 'Delivered', 'Cancelled', 'Posted', 'Reversed', 'Returned')),
   payment_method TEXT NOT NULL,
   payment_status TEXT NOT NULL DEFAULT 'Unpaid' CHECK (payment_status IN ('Paid', 'Partially Paid', 'Unpaid')),
   notes TEXT,

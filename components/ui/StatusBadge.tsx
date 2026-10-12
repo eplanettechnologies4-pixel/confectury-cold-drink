@@ -2,7 +2,7 @@ import React from 'react';
 
 type BadgeType = 
   | 'In Stock' | 'Low Stock' | 'Out of Stock'
-  | 'Draft' | 'Pending' | 'Confirmed' | 'Delivered' | 'Cancelled'
+  | 'Draft' | 'Pending' | 'Confirmed' | 'Delivered' | 'Cancelled' | 'Returned'
   | 'Paid' | 'Partially Paid' | 'Unpaid' | 'Overdue'
   | 'Active' | 'Inactive' | 'Suspended'
   | 'Admin' | 'Manager' | 'Sales' | 'Accounts' | 'Inventory' | 'Staff'
@@ -52,6 +52,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'sm' })
     case 'Sale':
     case 'Return':
       colorClasses = 'bg-blue-50 text-blue-700 border-blue-200/80';
+      break;
+
+    case 'Returned':
+      colorClasses = 'bg-purple-100 text-purple-800 border-purple-200 font-bold';
       break;
 
     // Roles

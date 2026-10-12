@@ -58,6 +58,7 @@ export default function PartyWiseSalesReportPage() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
+      if (o.status === 'Returned' || o.status === 'Cancelled') return false;
       if (!isDateMatch(o.orderDate)) return false;
       if (selectedCustomer !== 'All' && o.clientId !== selectedCustomer) return false;
       if (selectedArea !== 'All' && o.area !== selectedArea) return false;

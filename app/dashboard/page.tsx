@@ -92,13 +92,13 @@ export default function DashboardPage() {
   };
 
   // 1. FILTERED AGGREGATES
-  const periodOrders = orders.filter(o => o.status !== 'Cancelled' && isDateSelected(o.date || o.orderDate));
+  const periodOrders = orders.filter(o => o.status !== 'Cancelled' && o.status !== 'Returned' && isDateSelected(o.date || o.orderDate));
   const periodPurchases = purchases.filter(p => p.status === 'Posted' && isDateSelected(p.purchaseDate));
   const periodPayments = payments.filter(p => isDateSelected(p.date || p.paymentDate));
   const periodExpenses = expenses.filter(e => e.status === 'Posted' && isDateSelected(e.date));
 
   // Today specific (for Today's cards)
-  const todayOrders = orders.filter(o => o.status !== 'Cancelled' && (o.date || o.orderDate) === todayStr);
+  const todayOrders = orders.filter(o => o.status !== 'Cancelled' && o.status !== 'Returned' && (o.date || o.orderDate) === todayStr);
   const todayPurchases = purchases.filter(p => p.status === 'Posted' && p.purchaseDate === todayStr);
   const todayPayments = payments.filter(p => (p.date || p.paymentDate) === todayStr);
   const todayExpenses = expenses.filter(e => e.status === 'Posted' && e.date === todayStr);

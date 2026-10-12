@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Truck, RotateCcw, Plus, AlertTriangle, Building, Package } from 'lucide-react';
+import Link from 'next/link';
+import { Truck, RotateCcw, Plus, AlertTriangle, Building, Package, CheckCircle } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Modal } from '@/components/ui/Modal';
@@ -11,24 +12,31 @@ import { formatPKR, formatDateDDMMYYYY, getTodayKarachiDate } from '@/lib/utils'
 export default function PurchaseReturnsPage() {
   const { purchaseReturns, recordPurchaseReturn, purchases, suppliers, products } = useAppState();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Eligible purchases (posted and not yet returned)
+  const eligiblePurchases = purchases.filter(p => p.status === 'Posted');
 
   const [formData, setFormData] = useState({
-    purchaseId: purchases[0]?.id || '',
-    purchaseInvoiceNumber: purchases[0]?.invoiceNumber || '',
-    supplierId: suppliers[0]?.id || '',
-    supplierName: suppliers[0]?.name || '',
-    productId: products[0]?.id || '',
-    productName: products[0]?.name || '',
-    quantity: 5,
-    unit: products[0]?.unit || 'Carton',
-    batch: products[0]?.batchNumber || 'BATCH-01',
+    purchaseId: eligiblePurchases[0]?.id || '',
+    purchaseInvoiceNumber: eligiblePurchases[0]?.invoiceNumber || '',
+    supplierId: eligiblePurchases[0]?.supplierId || suppliers[0]?.id || '',
+    supplierName: eligiblePurchases[0]?.supplierName || suppliers[0]?.name || '',
+    productId: eligiblePurchases[0]?.items[0]?.productId || products[0]?.id || '',
+    productName: eligiblePurchases[0]?.items[0]?.productName || products[0]?.name || '',
+    quantity: 1,
+    unit: eligiblePurchases[0]?.items[0]?.unit || products[0]?.unit || 'Carton',
+    batch: eligiblePurchases[0]?.items[0]?.batchNumber || products[0]?.batchNumber || 'BATCH-01',
     returnDate: getTodayKarachiDate(),
-    refundAmount: (products[0]?.costPrice || 2000) * 5,
-    reason: 'Factory seal defective / leakage on delivery',
+    refundAmount: eligiblePurchases[0]?.items[0]?.purchasePrice || products[0]?.costPrice || 2000,
+    reason: 'Factory packaging defective / transit damage return to supplier',
   });
 
+  const selectedPurchase = eligiblePurchases.find(p => p.id === formData.purchaseId);
+  const availableItems = selectedPurchase?.items || [];
+
   const handleOpenAddModal = () => {
-    const defaultPur = purchases[0];
+    const defaultPur = eligiblePurchases[0];
     const defaultItem = defaultPur?.items[0];
     const defaultProd = products.find(p => p.id === defaultItem?.productId) || products[0];
 
@@ -37,22 +45,45 @@ export default function PurchaseReturnsPage() {
       purchaseInvoiceNumber: defaultPur?.invoiceNumber || 'PINV-5001',
       supplierId: defaultPur?.supplierId || suppliers[0]?.id || '',
       supplierName: defaultPur?.supplierName || suppliers[0]?.name || '',
-      productId: defaultProd?.id || '',
-      productName: defaultProd?.name || '',
-      quantity: 5,
-      unit: defaultProd?.unit || 'Carton',
-      batch: defaultProd?.batchNumber || 'BATCH-01',
+      productId: defaultItem?.productId || defaultProd?.id || '',
+      productName: defaultItem?.productName || defaultProd?.name || '',
+      quantity: 1,
+      unit: defaultItem?.unit || defaultProd?.unit || 'Carton',
+      batch: defaultItem?.batchNumber || defaultProd?.batchNumber || 'BATCH-01',
       returnDate: getTodayKarachiDate(),
-      refundAmount: (defaultProd?.costPrice || 2400) * 5,
+      refundAmount: defaultItem?.purchasePrice || defaultProd?.costPrice || 2400,
       reason: 'Factory packaging defective / transit damage return to supplier',
     });
     setIsModalOpen(true);
   };
 
+  const handlePurchaseChange = (purchaseId: string) => {
+    const pur = eligiblePurchases.find(p => p.id === purchaseId);
+    if (!pur) return;
+    const firstItem = pur.items[0];
+    const prod = products.find(p => p.id === firstItem?.productId);
+
+    setFormData(prev => ({
+      ...prev,
+      purchaseId: pur.id,
+      purchaseInvoiceNumber: pur.invoiceNumber,
+      supplierId: pur.supplierId,
+      supplierName: pur.supplierName,
+      productId: firstItem?.productId || prod?.id || prev.productId,
+      productName: firstItem?.productName || prod?.name || prev.productName,
+      unit: firstItem?.unit || prod?.unit || prev.unit,
+      batch: firstItem?.batchNumber || prod?.batchNumber || prev.batch,
+      refundAmount: (firstItem?.purchasePrice || prod?.costPrice || 2000) * prev.quantity,
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     recordPurchaseReturn(formData);
+    const invNum = formData.purchaseInvoiceNumber;
     setIsModalOpen(false);
+    setToastMessage(`Purchase return for #${invNum} recorded. Invoice is now automatically removed from Daily Purchases.`);
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
   const columns: Column<PurchaseReturn>[] = [
@@ -101,6 +132,19 @@ export default function PurchaseReturnsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center space-x-2">
+            <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+            <span className="font-semibold">{toastMessage}</span>
+          </div>
+          <button onClick={() => setToastMessage(null)} className="text-emerald-700 font-bold hover:underline ml-4">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -108,17 +152,31 @@ export default function PurchaseReturnsPage() {
             <RotateCcw className="h-5 w-5 mr-2 text-rose-600" /> Purchase Returns to Suppliers
           </h1>
           <p className="text-xs text-slate-500">
-            Deduct defective or expired consignment quantities from inventory and adjust factory payables.
+            Deduct defective or expired consignment quantities from inventory and adjust factory payables. Returned purchases are automatically removed from Daily Purchases.
           </p>
         </div>
 
         <button
           onClick={handleOpenAddModal}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+          disabled={eligiblePurchases.length === 0}
+          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition disabled:opacity-50"
         >
           <Plus className="h-4 w-4" />
           <span>Record Purchase Return</span>
         </button>
+      </div>
+
+      {/* Notice Banner */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Truck className="h-4 w-4 text-blue-600 shrink-0" />
+          <span>
+            <strong>Automatic Removal Rule:</strong> When a purchase consignment is returned, it is automatically removed from active Daily Purchases and factory payables are reduced.
+          </span>
+        </div>
+        <Link href="/purchases" className="text-xs font-bold text-blue-700 hover:underline shrink-0 ml-4">
+          View Daily Purchases &rarr;
+        </Link>
       </div>
 
       {/* Table */}
@@ -137,26 +195,33 @@ export default function PurchaseReturnsPage() {
         maxWidth="max-w-lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900">
+            <p className="font-semibold flex items-center">
+              <AlertTriangle className="h-4 w-4 mr-1.5 text-amber-700" />
+              Automated Daily Purchases Adjustment
+            </p>
+            <p className="text-[11px] text-amber-800 mt-0.5">
+              Posting this return will deduct items from stock, decrease factory payable, and <strong>automatically remove this purchase from Daily Purchases</strong>.
+            </p>
+          </div>
+
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Select Supplier *</label>
-            <select
-              value={formData.supplierId}
-              onChange={e => {
-                const s = suppliers.find(sup => sup.id === e.target.value);
-                setFormData({
-                  ...formData,
-                  supplierId: e.target.value,
-                  supplierName: s?.name || '',
-                });
-              }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium"
-            >
-              {suppliers.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <label className="block font-semibold text-slate-700 mb-1">Select Original Purchase Invoice *</label>
+            {eligiblePurchases.length === 0 ? (
+              <p className="p-2 bg-slate-100 rounded text-slate-500 italic">No posted purchases available to return.</p>
+            ) : (
+              <select
+                value={formData.purchaseId}
+                onChange={e => handlePurchaseChange(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium"
+              >
+                {eligiblePurchases.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.invoiceNumber} — {p.supplierName} ({formatDateDDMMYYYY(p.purchaseDate)}) • Total: {formatPKR(p.grandTotal)}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -165,22 +230,33 @@ export default function PurchaseReturnsPage() {
               <select
                 value={formData.productId}
                 onChange={e => {
+                  const it = availableItems.find(item => item.productId === e.target.value);
                   const p = products.find(prod => prod.id === e.target.value);
+                  const unitCost = it?.purchasePrice || p?.costPrice || 2000;
                   setFormData({
                     ...formData,
                     productId: e.target.value,
-                    productName: p?.name || '',
-                    unit: p?.unit || 'Carton',
-                    refundAmount: (p?.costPrice || 2000) * formData.quantity,
+                    productName: it?.productName || p?.name || '',
+                    unit: it?.unit || p?.unit || 'Carton',
+                    batch: it?.batchNumber || p?.batchNumber || 'BATCH-01',
+                    refundAmount: unitCost * formData.quantity,
                   });
                 }}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
               >
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                {availableItems.length > 0 ? (
+                  availableItems.map(it => (
+                    <option key={it.productId} value={it.productId}>
+                      {it.productName} ({it.quantity} {it.unit})
+                    </option>
+                  ))
+                ) : (
+                  products.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -192,11 +268,13 @@ export default function PurchaseReturnsPage() {
                 value={formData.quantity}
                 onChange={e => {
                   const qty = Math.max(1, Number(e.target.value));
+                  const it = availableItems.find(item => item.productId === formData.productId);
                   const p = products.find(prod => prod.id === formData.productId);
+                  const unitCost = it?.purchasePrice || p?.costPrice || 2000;
                   setFormData({
                     ...formData,
                     quantity: qty,
-                    refundAmount: (p?.costPrice || 2000) * qty,
+                    refundAmount: unitCost * qty,
                   });
                 }}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold"
@@ -253,7 +331,7 @@ export default function PurchaseReturnsPage() {
               type="submit"
               className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-semibold shadow-xs"
             >
-              Record Purchase Return
+              Post Return & Remove Purchase
             </button>
           </div>
         </form>

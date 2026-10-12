@@ -88,9 +88,9 @@ export default function AreaWiseSalesPage() {
     return clients.filter(c => c.area.toLowerCase() === selectedAreaName.toLowerCase());
   }, [clients, selectedAreaName]);
 
-  // Sales orders for this area within the date filter
+  // Sales orders for this area within the date filter (excluding returned & cancelled)
   const areaOrders = useMemo(() => {
-    return orders.filter(o => o.area.toLowerCase() === selectedAreaName.toLowerCase() && isDateInFilter(o.orderDate));
+    return orders.filter(o => o.status !== 'Returned' && o.status !== 'Cancelled' && o.area.toLowerCase() === selectedAreaName.toLowerCase() && isDateInFilter(o.orderDate));
   }, [orders, selectedAreaName, dateFilter, customStartDate, customEndDate]);
 
   // Sales returns for this area

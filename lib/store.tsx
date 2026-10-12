@@ -91,6 +91,7 @@ interface AppStateContextType {
   postPurchase: (purchaseId: string) => boolean;
   purchaseReturns: PurchaseReturn[];
   recordPurchaseReturn: (returnData: Omit<PurchaseReturn, 'id' | 'returnNumber' | 'status'>) => PurchaseReturn;
+  returnPurchase: (purchaseId: string, options?: { reason?: string }) => PurchaseReturn;
 
   // Sales Orders & Sales Returns
   orders: Order[];
@@ -98,6 +99,7 @@ interface AppStateContextType {
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   salesReturns: SalesReturn[];
   recordSalesReturn: (returnData: Omit<SalesReturn, 'id' | 'returnNumber' | 'status'>) => SalesReturn;
+  returnSale: (orderId: string, options?: { reason?: string; isResalable?: boolean; refundAmount?: number }) => SalesReturn;
 
   // Customer Collections & Receivables Ledger
   payments: Payment[];
@@ -371,15 +373,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Supabase Synchronization State & Helpers
   const [supabaseSyncStatus, setSupabaseSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
 
-  const syncMutation = (entity: string, action: 'upsert' | 'delete', data?: any, id?: string) => {
+  const syncMutation = async (entity: string, action: 'upsert' | 'delete', data?: any, id?: string) => {
     if (typeof window === 'undefined') return;
-    fetch('/api/supabase/data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entity, action, data, id }),
-    }).catch(err => {
-      console.warn(`[Supabase Sync] ${entity} mutation failed:`, err);
-    });
+    try {
+      const res = await fetch('/api/supabase/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity, action, data, id }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        console.warn(`[Supabase Sync] ${entity} mutation server response:`, errJson);
+      }
+    } catch (err) {
+      console.warn(`[Supabase Sync] ${entity} mutation network error:`, err);
+    }
   };
 
   const refreshFromSupabase = async () => {
@@ -389,26 +397,86 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const json = await res.json();
       if (json.success && json.configured) {
         if (json.hasData && json.data) {
-          if (json.data.areas?.length) setAreas(json.data.areas);
-          if (json.data.clients?.length) setClients(json.data.clients);
-          if (json.data.products?.length) setProducts(json.data.products);
-          if (json.data.suppliers?.length) setSuppliers(json.data.suppliers);
-          if (json.data.supplierPayments?.length) setSupplierPayments(json.data.supplierPayments);
-          if (json.data.purchases?.length) setPurchases(json.data.purchases);
-          if (json.data.purchaseReturns?.length) setPurchaseReturns(json.data.purchaseReturns);
-          if (json.data.orders?.length) setOrders(json.data.orders);
-          if (json.data.salesReturns?.length) setSalesReturns(json.data.salesReturns);
-          if (json.data.payments?.length) setPayments(json.data.payments);
-          if (json.data.ledgerEntries && Object.keys(json.data.ledgerEntries).length) setLedgerEntries(json.data.ledgerEntries);
-          if (json.data.inventoryTransactions?.length) setInventoryTransactions(json.data.inventoryTransactions);
-          if (json.data.expenses?.length) setExpenses(json.data.expenses);
-          if (json.data.dailyClosings?.length) setDailyClosings(json.data.dailyClosings);
-          if (json.data.badDebts?.length) setBadDebts(json.data.badDebts);
-          if (json.data.badDebtRecoveries?.length) setBadDebtRecoveries(json.data.badDebtRecoveries);
-          if (json.data.damagedStockRecords?.length) setDamagedStockRecords(json.data.damagedStockRecords);
-          if (json.data.expiryRecords?.length) setExpiryRecords(json.data.expiryRecords);
-          if (json.data.staff?.length) setStaff(json.data.staff);
-          if (json.data.auditLogs?.length) setAuditLogs(json.data.auditLogs);
+          if (Array.isArray(json.data.areas)) {
+            setAreas(json.data.areas);
+            try { localStorage.setItem('ahmad_areas', JSON.stringify(json.data.areas)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.clients)) {
+            setClients(json.data.clients);
+            try { localStorage.setItem('ahmad_clients', JSON.stringify(json.data.clients)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.products)) {
+            setProducts(json.data.products);
+            try { localStorage.setItem('ahmad_products', JSON.stringify(json.data.products)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.suppliers)) {
+            setSuppliers(json.data.suppliers);
+            try { localStorage.setItem('ahmad_suppliers', JSON.stringify(json.data.suppliers)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.supplierPayments)) {
+            setSupplierPayments(json.data.supplierPayments);
+            try { localStorage.setItem('ahmad_supplier_payments', JSON.stringify(json.data.supplierPayments)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.purchases)) {
+            setPurchases(json.data.purchases);
+            try { localStorage.setItem('ahmad_purchases', JSON.stringify(json.data.purchases)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.purchaseReturns)) {
+            setPurchaseReturns(json.data.purchaseReturns);
+            try { localStorage.setItem('ahmad_purchase_returns', JSON.stringify(json.data.purchaseReturns)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.orders)) {
+            setOrders(json.data.orders);
+            try { localStorage.setItem('ahmad_orders', JSON.stringify(json.data.orders)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.salesReturns)) {
+            setSalesReturns(json.data.salesReturns);
+            try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(json.data.salesReturns)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.payments)) {
+            setPayments(json.data.payments);
+            try { localStorage.setItem('ahmad_payments', JSON.stringify(json.data.payments)); } catch (_) {}
+          }
+          if (json.data.ledgerEntries && typeof json.data.ledgerEntries === 'object') {
+            setLedgerEntries(json.data.ledgerEntries);
+            try { localStorage.setItem('ahmad_ledgers', JSON.stringify(json.data.ledgerEntries)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.inventoryTransactions)) {
+            setInventoryTransactions(json.data.inventoryTransactions);
+            try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(json.data.inventoryTransactions)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.expenses)) {
+            setExpenses(json.data.expenses);
+            try { localStorage.setItem('ahmad_expenses', JSON.stringify(json.data.expenses)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.dailyClosings)) {
+            setDailyClosings(json.data.dailyClosings);
+            try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(json.data.dailyClosings)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.badDebts)) {
+            setBadDebts(json.data.badDebts);
+            try { localStorage.setItem('ahmad_bad_debts', JSON.stringify(json.data.badDebts)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.badDebtRecoveries)) {
+            setBadDebtRecoveries(json.data.badDebtRecoveries);
+            try { localStorage.setItem('ahmad_bad_debt_recoveries', JSON.stringify(json.data.badDebtRecoveries)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.damagedStockRecords)) {
+            setDamagedStockRecords(json.data.damagedStockRecords);
+            try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(json.data.damagedStockRecords)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.expiryRecords)) {
+            setExpiryRecords(json.data.expiryRecords);
+            try { localStorage.setItem('ahmad_expiry_records', JSON.stringify(json.data.expiryRecords)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.staff)) {
+            setStaff(json.data.staff);
+            try { localStorage.setItem('ahmad_staff', JSON.stringify(json.data.staff)); } catch (_) {}
+          }
+          if (Array.isArray(json.data.auditLogs)) {
+            setAuditLogs(json.data.auditLogs);
+            try { localStorage.setItem('ahmad_audit_logs', JSON.stringify(json.data.auditLogs)); } catch (_) {}
+          }
         } else {
           INITIAL_AREAS.forEach(area => syncMutation('area', 'upsert', area));
         }
@@ -573,7 +641,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteClient = (id: string) => {
     const target = clients.find(c => c.id === id);
-    setClients(prev => prev.filter(c => c.id !== id));
+    setClients(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      try { localStorage.setItem('ahmad_clients', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
     syncMutation('client', 'delete', undefined, id);
     addAuditLog('Deleted Client', 'Clients', target?.clientId || id, `Removed client ${target?.companyName}`);
   };
@@ -629,7 +701,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteProduct = (id: string) => {
     const target = products.find(p => p.id === id);
-    setProducts(prev => prev.filter(p => p.id !== id));
+    setProducts(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      try { localStorage.setItem('ahmad_products', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
     syncMutation('product', 'delete', undefined, id);
     addAuditLog('Deleted Product', 'Inventory', target?.sku || id, `Deleted product ${target?.name || id}`);
   };
@@ -911,8 +987,100 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
     );
 
-    addAuditLog('Purchase Return', 'Purchases', returnNumber, `Returned ${newReturn.quantity} units to ${newReturn.supplierName} (Refund: Rs. ${newReturn.refundAmount.toLocaleString()})`);
+    // 3. Mark the original purchase as Returned so it is removed from active Daily Purchases!
+    const targetPurchase = purchases.find(p => p.id === newReturn.purchaseId || p.invoiceNumber === newReturn.purchaseInvoiceNumber);
+    if (targetPurchase) {
+      const updatedPurchase: Purchase = { ...targetPurchase, status: 'Returned' };
+      setPurchases(prev => {
+        const next = prev.map(p => (p.id === targetPurchase.id ? updatedPurchase : p));
+        try { localStorage.setItem('ahmad_purchases', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('purchase', 'upsert', updatedPurchase);
+    }
+
+    addAuditLog('Purchase Return', 'Purchases', returnNumber, `Returned ${newReturn.quantity} units to ${newReturn.supplierName} (Refund: Rs. ${newReturn.refundAmount.toLocaleString()}) - Marked purchase as Returned`);
     syncMutation('purchase_return', 'upsert', newReturn);
+    return newReturn;
+  };
+
+  const returnPurchase = (purchaseId: string, options?: { reason?: string }): PurchaseReturn => {
+    const purchase = purchases.find(p => p.id === purchaseId || p.invoiceNumber === purchaseId);
+    if (!purchase) {
+      throw new Error(`Purchase #${purchaseId} not found.`);
+    }
+
+    const returnNumber = `PRTN-${Math.floor(1000 + Math.random() * 1000)}`;
+    const reason = options?.reason || 'Consignment returned to supplier';
+    const returnDate = getTodayKarachiDate();
+
+    // 1. Deduct stock for each item in the purchase
+    purchase.items.forEach(item => {
+      recordStockMovement(
+        item.productId,
+        'PURCHASE_RETURN',
+        -item.quantity,
+        returnNumber,
+        `Full Purchase Return for #${purchase.invoiceNumber}: ${item.productName}`,
+        purchase.supplierName,
+        'Khuram Chowk Warehouse',
+        item.unit
+      );
+    });
+
+    // 2. Reduce supplier payable
+    const payableToReduce = purchase.remainingPayable > 0 ? purchase.remainingPayable : purchase.grandTotal;
+    setSuppliers(prev =>
+      prev.map(s => {
+        if (s.id === purchase.supplierId) {
+          return {
+            ...s,
+            currentPayable: Math.max(0, s.currentPayable - payableToReduce),
+          };
+        }
+        return s;
+      })
+    );
+
+    // 3. Create master PurchaseReturn record
+    const firstItem = purchase.items[0];
+    const totalQty = purchase.items.reduce((sum, it) => sum + it.quantity, 0);
+    const newReturn: PurchaseReturn = {
+      id: generateUUID(),
+      returnNumber,
+      purchaseId: purchase.id,
+      purchaseInvoiceNumber: purchase.invoiceNumber,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplierName,
+      productId: firstItem?.productId || products[0]?.id || '',
+      productName: purchase.items.length > 1 ? `${firstItem?.productName} + ${purchase.items.length - 1} other item(s)` : (firstItem?.productName || 'Returned Goods'),
+      quantity: totalQty,
+      unit: firstItem?.unit || 'Carton',
+      batch: firstItem?.batchNumber || 'RETURN',
+      returnDate,
+      refundAmount: purchase.grandTotal,
+      reason,
+      status: 'Completed',
+    };
+
+    setPurchaseReturns(prev => {
+      const next = [newReturn, ...prev];
+      try { localStorage.setItem('ahmad_purchase_returns', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    // 4. Update the purchase status to 'Returned' and sync
+    const updatedPurchase: Purchase = { ...purchase, status: 'Returned' };
+    setPurchases(prev => {
+      const next = prev.map(p => (p.id === purchase.id ? updatedPurchase : p));
+      try { localStorage.setItem('ahmad_purchases', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    addAuditLog('Purchase Return', 'Purchases', returnNumber, `Returned purchase #${purchase.invoiceNumber} to ${purchase.supplierName} (Refund: Rs. ${purchase.grandTotal.toLocaleString()}). Removed from Daily Purchases.`);
+    syncMutation('purchase_return', 'upsert', newReturn);
+    syncMutation('purchase', 'upsert', updatedPurchase);
+
     return newReturn;
   };
 
@@ -1101,6 +1269,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (c.id === newReturn.clientId) {
             return {
               ...c,
+              totalPurchases: Math.max(0, c.totalPurchases - newReturn.refundAmount),
               currentBalance: Math.max(0, c.currentBalance - newReturn.refundAmount),
               lastTransactionDate: newReturn.returnDate,
             };
@@ -1110,7 +1279,150 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     }
 
-    addAuditLog('Sales Return', 'Sales', returnNumber, `Recorded sales return of ${newReturn.quantity} units from ${newReturn.clientName} (Refund credit: Rs. ${newReturn.refundAmount.toLocaleString()})`);
+    // 3. Mark the original order as Returned so it is automatically removed from active Daily Sales!
+    const targetOrder = orders.find(o => o.id === newReturn.orderId || o.orderNumber === newReturn.orderNumber);
+    if (targetOrder) {
+      const updatedOrder: Order = { ...targetOrder, status: 'Returned' };
+      setOrders(prev => {
+        const next = prev.map(o => (o.id === targetOrder.id ? updatedOrder : o));
+        try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('order', 'upsert', updatedOrder);
+    }
+
+    addAuditLog('Sales Return', 'Sales', returnNumber, `Recorded sales return of ${newReturn.quantity} units from ${newReturn.clientName} (Refund credit: Rs. ${newReturn.refundAmount.toLocaleString()}) - Marked order as Returned`);
+    syncMutation('sales_return', 'upsert', newReturn);
+    return newReturn;
+  };
+
+  const returnSale = (orderId: string, options?: { reason?: string; isResalable?: boolean; refundAmount?: number }): SalesReturn => {
+    const order = orders.find(o => o.id === orderId || o.orderNumber === orderId);
+    if (!order) {
+      throw new Error(`Order #${orderId} not found.`);
+    }
+
+    const returnNumber = `SRTN-${Math.floor(1000 + Math.random() * 1000)}`;
+    const reason = options?.reason || 'Customer sales invoice returned';
+    const isResalable = options?.isResalable !== undefined ? options.isResalable : true;
+    const returnDate = getTodayKarachiDate();
+    const refundAmount = options?.refundAmount !== undefined ? options.refundAmount : order.grandTotal;
+
+    // 1. Restock each item from the order
+    order.items.forEach(item => {
+      if (isResalable) {
+        recordStockMovement(
+          item.productId,
+          'SALES_RETURN',
+          item.quantity,
+          returnNumber,
+          `Sales Return for #${order.orderNumber}: ${item.productName}`,
+          undefined,
+          'Khuram Chowk Warehouse',
+          item.unit
+        );
+      } else {
+        const prod = products.find(p => p.id === item.productId);
+        const cost = prod?.costPrice || 0;
+        const damagedRecord: DamagedStockRecord = {
+          id: generateUUID(),
+          productId: item.productId,
+          productName: item.productName,
+          category: prod?.category || 'Cold Drinks',
+          batch: item.batch || 'RETURN-DAMAGED',
+          quantity: item.quantity,
+          unit: item.unit,
+          unitCost: cost,
+          totalLoss: item.quantity * cost,
+          date: returnDate,
+          reason: `Returned damaged from #${order.orderNumber}: ${reason}`,
+          recordedBy: currentUser?.name || 'Sales Staff',
+        };
+        setDamagedStockRecords(prev => [...prev, damagedRecord]);
+      }
+    });
+
+    // 2. Adjust customer ledger & balance
+    const client = clients.find(c => c.id === order.clientId);
+    if (client) {
+      const existingLedger = ledgerEntries[order.clientId] || [];
+      const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
+      const creditToReverse = order.amountRemaining > 0 ? order.amountRemaining : 0;
+      const newBal = Math.max(0, lastBal - (creditToReverse > 0 ? creditToReverse : refundAmount));
+
+      const ledgerEntry: LedgerEntry = {
+        id: 'led-' + Date.now(),
+        clientId: order.clientId,
+        date: returnDate,
+        reference: returnNumber,
+        type: 'Sales Return',
+        description: `Full sales return for Invoice #${order.orderNumber} (${order.items.length} items)`,
+        debit: 0,
+        credit: creditToReverse > 0 ? creditToReverse : refundAmount,
+        balance: newBal,
+        notes: reason,
+      };
+
+      setLedgerEntries(prev => ({
+        ...prev,
+        [order.clientId]: [...(prev[order.clientId] || []), ledgerEntry],
+      }));
+
+      setClients(prev =>
+        prev.map(c => {
+          if (c.id === order.clientId) {
+            return {
+              ...c,
+              totalPurchases: Math.max(0, c.totalPurchases - order.grandTotal),
+              currentBalance: Math.max(0, c.currentBalance - (creditToReverse > 0 ? creditToReverse : refundAmount)),
+              lastTransactionDate: returnDate,
+            };
+          }
+          return c;
+        })
+      );
+    }
+
+    // 3. Create master SalesReturn record
+    const firstItem = order.items[0];
+    const totalQty = order.items.reduce((sum, it) => sum + it.quantity, 0);
+    const newReturn: SalesReturn = {
+      id: generateUUID(),
+      returnNumber,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      clientId: order.clientId,
+      clientName: order.companyName,
+      productId: firstItem?.productId || products[0]?.id || '',
+      productName: order.items.length > 1 ? `${firstItem?.productName} + ${order.items.length - 1} other item(s)` : (firstItem?.productName || 'Returned Goods'),
+      quantity: totalQty,
+      unit: firstItem?.unit || 'Carton',
+      batch: firstItem?.batch || 'RETURN',
+      returnDate,
+      refundAmount,
+      isResalable,
+      reason,
+      status: 'Completed',
+    };
+
+    setSalesReturns(prev => {
+      const next = [newReturn, ...prev];
+      try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    // 4. Update the order status to 'Returned' and sync
+    const updatedOrder: Order = { ...order, status: 'Returned' };
+    setOrders(prev => {
+      const next = prev.map(o => (o.id === order.id ? updatedOrder : o));
+      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    addAuditLog('Sales Return', 'Sales', returnNumber, `Returned sale #${order.orderNumber} for ${order.companyName} (Refund: Rs. ${refundAmount.toLocaleString()}). Removed from Daily Sales.`);
+    syncMutation('sales_return', 'upsert', newReturn);
+    syncMutation('order', 'upsert', updatedOrder);
+
     return newReturn;
   };
 
@@ -1584,11 +1896,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         postPurchase,
         purchaseReturns,
         recordPurchaseReturn,
+        returnPurchase,
         orders,
         createOrder,
         updateOrderStatus,
         salesReturns,
         recordSalesReturn,
+        returnSale,
         payments,
         recordPayment,
         ledgerEntries,

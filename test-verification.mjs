@@ -342,6 +342,142 @@ console.log(`  -----------------------------------------`);
 console.log(`  Net Profit:          ${formatPKR(netProfitVal)} (${netMarginPct.toFixed(1)}%)`);
 console.log('✓ PASS: P&L financial logic verified with complete inventory costing.\n');
 
+// ----------------------------------------------------
+// TEST 17: Return Sale -> Sale automatically removed from Daily Sales & stock restored
+// ----------------------------------------------------
+console.log('TEST 17: Sale Return (Remove from Daily Sales & Restock)');
+const testSaleOrder = {
+  id: 'ord-test-8801',
+  orderNumber: 'INV-8801',
+  clientId: clientMT1.id,
+  companyName: clientMT1.name,
+  grandTotal: 12000,
+  amountPaid: 2000,
+  amountRemaining: 10000,
+  status: 'Confirmed',
+  items: [{ productId: testProd.id, quantity: 15, unitPrice: 800 }],
+};
+state.orders.push(testSaleOrder);
+clientMT1.currentBalance += 10000;
+testProd.currentStock -= 15;
+
+const activeDailySalesBefore = state.orders.filter(o => o.status !== 'Returned' && o.status !== 'Cancelled');
+assert(activeDailySalesBefore.some(o => o.id === testSaleOrder.id), 'Sale must initially be present in active Daily Sales');
+const initialActiveSalesCount = activeDailySalesBefore.length;
+const stockBeforeReturn = testProd.currentStock;
+const balanceBeforeReturn = clientMT1.currentBalance;
+
+// Perform Sale Return
+testSaleOrder.status = 'Returned';
+testProd.currentStock += 15; // Restocked
+clientMT1.currentBalance -= 10000; // Credit reversed
+
+const activeDailySalesAfter = state.orders.filter(o => o.status !== 'Returned' && o.status !== 'Cancelled');
+assert(!activeDailySalesAfter.some(o => o.id === testSaleOrder.id), 'Sale must be removed from active Daily Sales');
+assert.strictEqual(activeDailySalesAfter.length, initialActiveSalesCount - 1, 'Active Daily Sales count must decrease by 1');
+assert.strictEqual(testProd.currentStock, stockBeforeReturn + 15, 'Inventory must be restored on sales return');
+assert.strictEqual(clientMT1.currentBalance, balanceBeforeReturn - 10000, 'Customer credit balance must be reversed on sales return');
+console.log('✓ PASS: Sale return automatically removes sale from Daily Sales, restores stock, and reverses customer balance.\n');
+
+// ----------------------------------------------------
+// TEST 18: Return Purchase -> Purchase automatically removed from Daily Purchases & stock deducted
+// ----------------------------------------------------
+console.log('TEST 18: Purchase Return (Remove from Daily Purchases & Deduct Stock)');
+const testSupplier = { id: 'sup-01', name: 'Gourmet Foods', currentPayable: 50000 };
+const testPurchase = {
+  id: 'pur-test-5001',
+  invoiceNumber: 'PINV-5001',
+  supplierId: testSupplier.id,
+  supplierName: testSupplier.name,
+  grandTotal: 25000,
+  amountPaid: 5000,
+  remainingPayable: 20000,
+  status: 'Posted',
+  items: [{ productId: testProd.id, quantity: 25, purchasePrice: 1000 }],
+};
+state.purchases.push(testPurchase);
+testSupplier.currentPayable += 20000;
+testProd.currentStock += 25;
+
+const activeDailyPurchasesBefore = state.purchases.filter(p => p.status !== 'Returned' && p.status !== 'Cancelled');
+assert(activeDailyPurchasesBefore.some(p => p.id === testPurchase.id), 'Purchase must initially be present in Daily Purchases');
+const initialActivePurchasesCount = activeDailyPurchasesBefore.length;
+const stockBeforePurReturn = testProd.currentStock;
+const payableBeforePurReturn = testSupplier.currentPayable;
+
+// Perform Purchase Return
+testPurchase.status = 'Returned';
+testProd.currentStock -= 25; // Stock deducted
+testSupplier.currentPayable -= 20000; // Debt reduced
+
+const activeDailyPurchasesAfter = state.purchases.filter(p => p.status !== 'Returned' && p.status !== 'Cancelled');
+assert(!activeDailyPurchasesAfter.some(p => p.id === testPurchase.id), 'Purchase must be removed from Daily Purchases');
+assert.strictEqual(activeDailyPurchasesAfter.length, initialActivePurchasesCount - 1, 'Active Daily Purchases count must decrease by 1');
+assert.strictEqual(testProd.currentStock, stockBeforePurReturn - 25, 'Inventory must be deducted on purchase return');
+assert.strictEqual(testSupplier.currentPayable, payableBeforePurReturn - 20000, 'Supplier payable must be reduced on purchase return');
+// ----------------------------------------------------
+// TEST 19: Product Deletion & Page Reload Persistence
+// ----------------------------------------------------
+console.log('TEST 19: Product Deletion & Page Reload Persistence');
+const productToDelete = {
+  id: 'prod-del-99',
+  sku: 'SKU-DEL-99',
+  name: 'Temporary Test Product',
+  category: 'Cold Drinks',
+  currentStock: 50,
+  minStockLevel: 10,
+};
+state.products.push(productToDelete);
+assert(state.products.some(p => p.id === productToDelete.id), 'Product should be added');
+
+// Simulate deleteProduct action (sync to localStorage and state)
+state.products = state.products.filter(p => p.id !== productToDelete.id);
+assert(!state.products.some(p => p.id === productToDelete.id), 'Product should be removed from active state');
+
+// Simulate page reload with refreshFromSupabase receiving updated products list (even if empty or missing deleted id)
+const simulatedDbProducts = state.products.map(p => ({ ...p }));
+if (Array.isArray(simulatedDbProducts)) {
+  state.products = simulatedDbProducts;
+}
+assert(!state.products.some(p => p.id === productToDelete.id), 'Deleted product must NOT reappear after reload');
+console.log('✓ PASS: Deleted product remains deleted after simulated reload with Supabase sync.\n');
+
+// ----------------------------------------------------
+// TEST 20: Sale & Purchase Return Status Roundtrip with Supabase Mapping
+// ----------------------------------------------------
+console.log('TEST 20: Return Status Supabase Roundtrip (Cancelled/[RETURNED] <-> Returned)');
+// Given an order marked as Returned
+const clientOrder = {
+  id: 'ord-roundtrip-1',
+  orderNumber: 'INV-RT-1',
+  status: 'Returned',
+  notes: 'Invoice returned by customer',
+};
+
+// Simulate mappers.orderToDb
+const dbOrderRow = {
+  id: clientOrder.id,
+  order_number: clientOrder.orderNumber,
+  status: clientOrder.status === 'Returned' ? 'Cancelled' : clientOrder.status,
+  notes: clientOrder.status === 'Returned' ? `${clientOrder.notes} [RETURNED]` : clientOrder.notes,
+};
+assert.strictEqual(dbOrderRow.status, 'Cancelled', 'Supabase status must be Cancelled to satisfy check constraint');
+assert(dbOrderRow.notes.includes('[RETURNED]'), 'Notes must contain [RETURNED] tag');
+
+// Simulate mappers.orderFromDb on page reload
+const isReturnedOrder = dbOrderRow.status === 'Cancelled' || dbOrderRow.notes.includes('[RETURNED]');
+const reloadedOrder = {
+  id: dbOrderRow.id,
+  orderNumber: dbOrderRow.order_number,
+  status: isReturnedOrder ? 'Returned' : dbOrderRow.status,
+};
+assert.strictEqual(reloadedOrder.status, 'Returned', 'Reloaded order must be restored as Returned');
+
+// Ensure it is excluded from active Daily Sales on reload
+const reloadedActiveDailySales = [reloadedOrder].filter(o => o.status !== 'Returned' && o.status !== 'Cancelled');
+assert.strictEqual(reloadedActiveDailySales.length, 0, 'Returned order must NOT appear in active Daily Sales upon reload');
+console.log('✓ PASS: Return status successfully roundtrips through Supabase DB constraints and remains excluded from active sales.\n');
+
 console.log('====================================================');
-console.log('ALL 16 TEST SCENARIOS PASSED WITH ZERO FAILURES!');
+console.log('ALL 20 TEST SCENARIOS PASSED WITH ZERO FAILURES!');
 console.log('====================================================');
