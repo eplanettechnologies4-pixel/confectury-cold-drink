@@ -33,7 +33,7 @@ export const INITIAL_STAFF: Staff[] = [
 
 export const INITIAL_AREAS: Area[] = [
   {
-    id: 'area-1',
+    id: 'a0000001-0000-4000-8000-000000000001',
     code: 'MDT',
     name: 'Madina Town',
     description: 'Madina Town Main Boulevard, Susan Road connecting markets & residential shops',
@@ -42,7 +42,7 @@ export const INITIAL_AREAS: Area[] = [
     createdAt: '2023-01-01',
   },
   {
-    id: 'area-2',
+    id: 'a0000001-0000-4000-8000-000000000002',
     code: 'DGD',
     name: 'D-Ground',
     description: 'D-Ground Commercial Area, Peoples Colony No. 1, Chenab Market',
@@ -51,7 +51,7 @@ export const INITIAL_AREAS: Area[] = [
     createdAt: '2023-01-01',
   },
   {
-    id: 'area-3',
+    id: 'a0000001-0000-4000-8000-000000000003',
     code: 'SSN',
     name: 'Susan Road',
     description: 'Susan Road Commercial Area & surrounding bakery markets',
@@ -60,7 +60,7 @@ export const INITIAL_AREAS: Area[] = [
     createdAt: '2023-01-05',
   },
   {
-    id: 'area-4',
+    id: 'a0000001-0000-4000-8000-000000000004',
     code: 'SMN',
     name: 'Samanabad',
     description: 'Samanabad Main Bazaar, Novelty Chowk, Dijkot Road retail belt',
@@ -69,7 +69,7 @@ export const INITIAL_AREAS: Area[] = [
     createdAt: '2023-01-10',
   },
   {
-    id: 'area-5',
+    id: 'a0000001-0000-4000-8000-000000000005',
     code: 'JRN',
     name: 'Jaranwala Road',
     description: 'Jaranwala Road retail shops, Kohinoor City, Al-Fateh vicinity',
@@ -78,7 +78,7 @@ export const INITIAL_AREAS: Area[] = [
     createdAt: '2023-01-15',
   },
   {
-    id: 'area-6',
+    id: 'a0000001-0000-4000-8000-000000000006',
     code: 'GMA',
     name: 'Ghulam Muhammad Abad',
     description: 'GM Abad Main Bazar, Siddiqia Hospital Road confectionery cluster',
@@ -87,7 +87,7 @@ export const INITIAL_AREAS: Area[] = [
     createdAt: '2023-02-01',
   },
   {
-    id: 'area-7',
+    id: 'a0000001-0000-4000-8000-000000000007',
     code: 'KOT',
     name: 'Kotwali Road',
     description: 'Wholesale market cluster, Rail Bazaar, Karkhana Bazaar',

@@ -46,6 +46,7 @@ import {
   INITIAL_EXPIRY_RECORDS,
 } from './mock-data';
 import { formatDateDDMMYYYY, getTodayKarachiDate, convertUnitQuantity } from './utils';
+import { generateUUID } from './supabase/service';
 
 interface AppStateContextType {
   currentUser: User | null;
@@ -150,6 +151,10 @@ interface AppStateContextType {
 
   // System Data Reset
   resetAllData: () => void;
+
+  // Supabase Sync
+  supabaseSyncStatus: 'synced' | 'syncing' | 'offline' | 'error';
+  refreshFromSupabase: () => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -363,6 +368,64 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_staff', JSON.stringify(staff)); }, [staff]);
   useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_audit_logs', JSON.stringify(auditLogs)); }, [auditLogs]);
 
+  // Supabase Synchronization State & Helpers
+  const [supabaseSyncStatus, setSupabaseSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
+
+  const syncMutation = (entity: string, action: 'upsert' | 'delete', data?: any, id?: string) => {
+    if (typeof window === 'undefined') return;
+    fetch('/api/supabase/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity, action, data, id }),
+    }).catch(err => {
+      console.warn(`[Supabase Sync] ${entity} mutation failed:`, err);
+    });
+  };
+
+  const refreshFromSupabase = async () => {
+    try {
+      setSupabaseSyncStatus('syncing');
+      const res = await fetch('/api/supabase/data');
+      const json = await res.json();
+      if (json.success && json.configured) {
+        if (json.hasData && json.data) {
+          if (json.data.areas?.length) setAreas(json.data.areas);
+          if (json.data.clients?.length) setClients(json.data.clients);
+          if (json.data.products?.length) setProducts(json.data.products);
+          if (json.data.suppliers?.length) setSuppliers(json.data.suppliers);
+          if (json.data.supplierPayments?.length) setSupplierPayments(json.data.supplierPayments);
+          if (json.data.purchases?.length) setPurchases(json.data.purchases);
+          if (json.data.purchaseReturns?.length) setPurchaseReturns(json.data.purchaseReturns);
+          if (json.data.orders?.length) setOrders(json.data.orders);
+          if (json.data.salesReturns?.length) setSalesReturns(json.data.salesReturns);
+          if (json.data.payments?.length) setPayments(json.data.payments);
+          if (json.data.ledgerEntries && Object.keys(json.data.ledgerEntries).length) setLedgerEntries(json.data.ledgerEntries);
+          if (json.data.inventoryTransactions?.length) setInventoryTransactions(json.data.inventoryTransactions);
+          if (json.data.expenses?.length) setExpenses(json.data.expenses);
+          if (json.data.dailyClosings?.length) setDailyClosings(json.data.dailyClosings);
+          if (json.data.badDebts?.length) setBadDebts(json.data.badDebts);
+          if (json.data.badDebtRecoveries?.length) setBadDebtRecoveries(json.data.badDebtRecoveries);
+          if (json.data.damagedStockRecords?.length) setDamagedStockRecords(json.data.damagedStockRecords);
+          if (json.data.expiryRecords?.length) setExpiryRecords(json.data.expiryRecords);
+          if (json.data.staff?.length) setStaff(json.data.staff);
+          if (json.data.auditLogs?.length) setAuditLogs(json.data.auditLogs);
+        } else {
+          INITIAL_AREAS.forEach(area => syncMutation('area', 'upsert', area));
+        }
+        setSupabaseSyncStatus('synced');
+      } else {
+        setSupabaseSyncStatus('offline');
+      }
+    } catch (err) {
+      console.warn('[Supabase Sync] Load error:', err);
+      setSupabaseSyncStatus('offline');
+    }
+  };
+
+  useEffect(() => {
+    refreshFromSupabase();
+  }, []);
+
   // Auth operations
   const login = (emailOrUser: string | User, role?: string) => {
     let newUser: User;
@@ -404,7 +467,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Audit helper
   const addAuditLog = (action: string, module: AuditLog['module'], recordRef: string, details: string) => {
     const newLog: AuditLog = {
-      id: 'aud-' + Date.now() + Math.floor(Math.random() * 100),
+      id: generateUUID(),
       timestamp: formatDateDDMMYYYY(new Date()) + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       user: currentUser?.name || 'System',
       action,
@@ -413,6 +476,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       details,
     };
     setAuditLogs(prev => [newLog, ...prev]);
+    syncMutation('audit_log', 'upsert', newLog);
   };
 
   // Closed day helper
@@ -425,22 +489,32 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addArea = (areaData: Omit<Area, 'id' | 'createdAt'>): Area => {
     const newArea: Area = {
       ...areaData,
-      id: 'area-' + Date.now(),
+      id: generateUUID(),
       createdAt: getTodayKarachiDate(),
     };
     setAreas(prev => [...prev, newArea]);
+    syncMutation('area', 'upsert', newArea);
     addAuditLog('Created Area', 'System', newArea.name, `Added distribution area ${newArea.name} (${newArea.code})`);
     return newArea;
   };
 
   const updateArea = (id: string, areaData: Partial<Area>) => {
     setAreas(prev => prev.map(a => (a.id === id ? { ...a, ...areaData } : a)));
+    const target = areas.find(a => a.id === id);
+    if (target) syncMutation('area', 'upsert', { ...target, ...areaData });
     addAuditLog('Updated Area', 'System', id, `Updated area details`);
   };
 
   const toggleAreaStatus = (id: string) => {
     setAreas(prev =>
-      prev.map(a => (a.id === id ? { ...a, status: a.status === 'Active' ? 'Inactive' : 'Active' } : a))
+      prev.map(a => {
+        if (a.id === id) {
+          const nextStatus = a.status === 'Active' ? 'Inactive' : 'Active';
+          syncMutation('area', 'upsert', { ...a, status: nextStatus });
+          return { ...a, status: nextStatus };
+        }
+        return a;
+      })
     );
   };
 
@@ -456,7 +530,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const initialBal = clientData.openingBalance || 0;
     const newClient: Client = {
       ...clientData,
-      id: 'clt-' + Date.now(),
+      id: generateUUID(),
       clientId,
       totalPurchases: initialBal,
       totalPaid: 0,
@@ -469,7 +543,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (initialBal > 0) {
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now(),
+        id: generateUUID(),
         clientId: newClient.id,
         date: getTodayKarachiDate(),
         reference: `OPB-${newClient.clientId}`,
@@ -486,18 +560,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('Created Client', 'Clients', clientId, `Added client ${newClient.companyName} (${newClient.name}) in ${newClient.area}`);
+    syncMutation('client', 'upsert', newClient);
     return newClient;
   };
 
   const updateClient = (id: string, clientData: Partial<Client>) => {
     setClients(prev => prev.map(c => (c.id === id ? { ...c, ...clientData } : c)));
     const target = clients.find(c => c.id === id);
+    if (target) syncMutation('client', 'upsert', { ...target, ...clientData });
     addAuditLog('Updated Client', 'Clients', target?.clientId || id, `Updated information for ${target?.companyName}`);
   };
 
   const deleteClient = (id: string) => {
     const target = clients.find(c => c.id === id);
     setClients(prev => prev.filter(c => c.id !== id));
+    syncMutation('client', 'delete', undefined, id);
     addAuditLog('Deleted Client', 'Clients', target?.clientId || id, `Removed client ${target?.companyName}`);
   };
 
@@ -511,7 +588,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const newProduct: Product = {
       ...productData,
-      id: 'prd-' + Date.now(),
+      id: generateUUID(),
       reservedStock: 0,
       availableStock: currentStock,
       status,
@@ -530,6 +607,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('Added Product', 'Inventory', newProduct.sku, `Added product ${newProduct.name} (${newProduct.category})`);
+    syncMutation('product', 'upsert', newProduct);
     return newProduct;
   };
 
@@ -538,6 +616,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       prev.map(p => {
         if (p.id !== id) return p;
         const updated = { ...p, ...productData };
+        syncMutation('product', 'upsert', updated);
         const avail = updated.currentStock - updated.reservedStock;
         let status: Product['status'] = 'In Stock';
         if (updated.currentStock === 0) status = 'Out of Stock';
@@ -551,6 +630,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteProduct = (id: string) => {
     const target = products.find(p => p.id === id);
     setProducts(prev => prev.filter(p => p.id !== id));
+    syncMutation('product', 'delete', undefined, id);
     addAuditLog('Deleted Product', 'Inventory', target?.sku || id, `Deleted product ${target?.name || id}`);
   };
 
@@ -579,7 +659,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     const tx: InventoryTransaction = {
-      id: 'stk-' + Date.now() + Math.random(),
+      id: generateUUID(),
       date: getTodayKarachiDate(),
       reference: `ADJ-${Date.now().toString().slice(-4)}`,
       productId,
@@ -655,18 +735,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const supplierId = `SUP-${suppliers.length + 101}`;
     const newSupplier: Supplier = {
       ...supplierData,
-      id: 'sup-' + Date.now(),
+      id: generateUUID(),
       supplierId,
       currentPayable: supplierData.openingPayable || 0,
       createdAt: getTodayKarachiDate(),
     };
     setSuppliers(prev => [...prev, newSupplier]);
     addAuditLog('Added Supplier', 'Purchases', supplierId, `Added supplier ${newSupplier.name}`);
+    syncMutation('supplier', 'upsert', newSupplier);
     return newSupplier;
   };
 
   const updateSupplier = (id: string, supplierData: Partial<Supplier>) => {
     setSuppliers(prev => prev.map(s => (s.id === id ? { ...s, ...supplierData } : s)));
+    const target = suppliers.find(s => s.id === id);
+    if (target) syncMutation('supplier', 'upsert', { ...target, ...supplierData });
     addAuditLog('Updated Supplier', 'Purchases', id, `Updated supplier attributes`);
   };
 
@@ -674,7 +757,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const paymentNumber = `SPAY-${Date.now().toString().slice(-4)}`;
     const newPayment: SupplierPayment = {
       ...paymentData,
-      id: 'spay-' + Date.now(),
+      id: generateUUID(),
       paymentNumber,
     };
     setSupplierPayments(prev => [newPayment, ...prev]);
@@ -693,6 +776,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     addAuditLog('Supplier Payment', 'Finance', paymentNumber, `Paid Rs. ${paymentData.amount.toLocaleString()} to ${paymentData.supplierName}`);
+    syncMutation('supplier_payment', 'upsert', newPayment);
     return newPayment;
   };
 
@@ -701,7 +785,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const invoiceNumber = `PINV-${Math.floor(5000 + Math.random() * 1000)}`;
     const newPurchase: Purchase = {
       ...purchaseData,
-      id: 'pur-' + Date.now(),
+      id: generateUUID(),
+      items: purchaseData.items.map(it => ({ ...it, id: generateUUID() })),
       invoiceNumber,
       createdAt: getTodayKarachiDate(),
     };
@@ -714,6 +799,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('Created Purchase', 'Purchases', invoiceNumber, `Created purchase invoice #${invoiceNumber} from ${newPurchase.supplierName} (Status: ${newPurchase.status})`);
+    syncMutation('purchase', 'upsert', newPurchase);
     return newPurchase;
   };
 
@@ -793,7 +879,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const returnNumber = `PRTN-${Math.floor(1000 + Math.random() * 1000)}`;
     const newReturn: PurchaseReturn = {
       ...returnData,
-      id: 'prtn-' + Date.now(),
+      id: generateUUID(),
       returnNumber,
       status: 'Completed',
     };
@@ -826,6 +912,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     addAuditLog('Purchase Return', 'Purchases', returnNumber, `Returned ${newReturn.quantity} units to ${newReturn.supplierName} (Refund: Rs. ${newReturn.refundAmount.toLocaleString()})`);
+    syncMutation('purchase_return', 'upsert', newReturn);
     return newReturn;
   };
 
@@ -856,7 +943,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const orderNumber = `INV-${Math.floor(8800 + Math.random() * 1000)}`;
     const newOrder: Order = {
       ...orderData,
-      id: 'ord-' + Date.now(),
+      id: generateUUID(),
+      items: orderData.items.map(it => ({ ...it, id: generateUUID() })),
       orderNumber,
       status: 'Posted',
       createdAt: getTodayKarachiDate(),
@@ -923,11 +1011,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('Created Sale', 'Sales', orderNumber, `Sale #${orderNumber} for ${newOrder.companyName} - Total: Rs. ${newOrder.grandTotal.toLocaleString()}, Cash: Rs. ${newOrder.amountPaid.toLocaleString()}, Credit: Rs. ${creditCreated.toLocaleString()}`);
+    syncMutation('order', 'upsert', newOrder);
     return { success: true, order: newOrder };
   };
 
   const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status } : o)));
+    setOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        syncMutation('order', 'upsert', { ...o, status });
+        return { ...o, status };
+      }
+      return o;
+    }));
     addAuditLog('Updated Order Status', 'Sales', orderId, `Changed order status to ${status}`);
   };
 
@@ -936,7 +1031,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const returnNumber = `SRTN-${Math.floor(1000 + Math.random() * 1000)}`;
     const newReturn: SalesReturn = {
       ...returnData,
-      id: 'srtn-' + Date.now(),
+      id: generateUUID(),
       returnNumber,
       status: 'Completed',
     };
@@ -960,7 +1055,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const prod = products.find(p => p.id === newReturn.productId);
       const cost = prod?.costPrice || 0;
       const damagedRecord: DamagedStockRecord = {
-        id: 'dmg-' + Date.now(),
+        id: generateUUID(),
         productId: newReturn.productId,
         productName: newReturn.productName,
         category: prod?.category || 'Cold Drinks',
@@ -1031,7 +1126,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const paymentNumber = `RCT-${Math.floor(2000 + Math.random() * 1000)}`;
     const newPayment: Payment = {
       ...paymentData,
-      id: 'pay-' + Date.now(),
+      id: generateUUID(),
       paymentNumber,
       status: 'Completed',
     };
@@ -1079,6 +1174,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('Recorded Collection', 'Accounts', paymentNumber, `Collection of Rs. ${paymentData.amount.toLocaleString()} from ${client?.companyName || 'Customer'} via ${paymentData.paymentMethod}`);
+    syncMutation('payment', 'upsert', newPayment);
     return { success: true, payment: newPayment };
   };
 
@@ -1123,7 +1219,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Record stock transaction history
     const tx: InventoryTransaction = {
-      id: 'stk-' + Date.now() + Math.random(),
+      id: generateUUID(),
       date: getTodayKarachiDate(),
       reference,
       productId,
@@ -1145,6 +1241,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setInventoryTransactions(prev => [tx, ...prev]);
+    syncMutation('inventory_tx', 'upsert', tx);
     addAuditLog('Stock Movement', 'Inventory', reference, `${type} of ${Math.abs(quantity)} units for ${product.name}`);
   };
 
@@ -1271,12 +1368,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const expenseNumber = `EXP-${Math.floor(100 + Math.random() * 900)}`;
     const newExpense: Expense = {
       ...expenseData,
-      id: 'exp-' + Date.now(),
+      id: generateUUID(),
       expenseNumber,
       status: 'Posted',
     };
     setExpenses(prev => [newExpense, ...prev]);
     addAuditLog('Created Expense', 'Expenses', expenseNumber, `Recorded ${newExpense.category} expense of Rs. ${newExpense.amount.toLocaleString()} (${newExpense.description})`);
+    syncMutation('expense', 'upsert', newExpense);
     return newExpense;
   };
 
@@ -1285,12 +1383,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const badDebtNumber = `BDT-${Math.floor(100 + Math.random() * 900)}`;
     const newBadDebt: BadDebt = {
       ...badDebtData,
-      id: 'bdt-' + Date.now(),
+      id: generateUUID(),
       badDebtNumber,
       status: 'Pending',
     };
     setBadDebts(prev => [newBadDebt, ...prev]);
     addAuditLog('Requested Bad Debt', 'Finance', badDebtNumber, `Requested bad debt write-off of Rs. ${newBadDebt.writeOffAmount.toLocaleString()} for ${newBadDebt.clientName}`);
+    syncMutation('bad_debt', 'upsert', newBadDebt);
     return newBadDebt;
   };
 
@@ -1351,7 +1450,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const recoveryNumber = `BREC-${Math.floor(100 + Math.random() * 900)}`;
     const newRecovery: BadDebtRecovery = {
       ...recoveryData,
-      id: 'brec-' + Date.now(),
+      id: generateUUID(),
       recoveryNumber,
     };
     setBadDebtRecoveries(prev => [newRecovery, ...prev]);
@@ -1379,6 +1478,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('Bad Debt Recovery', 'Finance', recoveryNumber, `Recovered Rs. ${recoveryData.amount.toLocaleString()} from ${recoveryData.clientName}`);
+    syncMutation('bad_debt_recovery', 'upsert', newRecovery);
     return newRecovery;
   };
 
@@ -1421,11 +1521,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const newDamaged: DamagedStockRecord = {
       ...damagedData,
-      id: 'dmg-' + Date.now(),
+      id: generateUUID(),
       unitCost,
       totalLoss,
     };
     setDamagedStockRecords(prev => [...prev, newDamaged]);
+    syncMutation('damaged_stock', 'upsert', newDamaged);
 
     // Deduct stock exactly once
     recordStockMovement(
@@ -1445,10 +1546,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const empId = `EMP-${String(staff.length + 1).padStart(3, '0')}`;
     const newStaff: Staff = {
       ...staffData,
-      id: 'stf-' + Date.now(),
+      id: generateUUID(),
       employeeId: empId,
     };
     setStaff(prev => [...prev, newStaff]);
+    syncMutation('staff', 'upsert', newStaff);
     addAuditLog('Added Staff', 'Staff', empId, `Created staff account for ${newStaff.name} (${newStaff.role})`);
   };
 
@@ -1515,6 +1617,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         auditLogs,
         addAuditLog,
         resetAllData,
+        supabaseSyncStatus,
+        refreshFromSupabase,
       }}
     >
       {children}
