@@ -111,31 +111,23 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           {/* Supabase Cloud Sync Status Badge */}
           <div
             title={`Supabase Database Sync: ${supabaseSyncStatus.toUpperCase()}`}
-            className={`hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
-              supabaseSyncStatus === 'synced'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : supabaseSyncStatus === 'syncing'
+            className={`hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${supabaseSyncStatus === 'synced'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : supabaseSyncStatus === 'syncing'
                 ? 'bg-blue-50 text-blue-700 border-blue-200'
                 : 'bg-amber-50 text-amber-700 border-amber-200'
-            }`}
+              }`}
           >
             <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                supabaseSyncStatus === 'synced'
-                  ? 'bg-emerald-500'
-                  : supabaseSyncStatus === 'syncing'
+              className={`w-1.5 h-1.5 rounded-full ${supabaseSyncStatus === 'synced'
+                ? 'bg-emerald-500'
+                : supabaseSyncStatus === 'syncing'
                   ? 'bg-blue-500 animate-ping'
                   : 'bg-amber-500'
-              }`}
+                }`}
             />
             <Database className="w-3 h-3" />
-            <span>
-              {supabaseSyncStatus === 'synced'
-                ? 'Supabase Connected'
-                : supabaseSyncStatus === 'syncing'
-                ? 'Syncing Supabase...'
-                : 'Supabase Offline'}
-            </span>
+
           </div>
 
           {/* Quick Search Button */}
