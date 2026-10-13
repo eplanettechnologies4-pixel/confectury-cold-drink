@@ -98,6 +98,7 @@ interface AppStateContextType {
   orders: Order[];
   createOrder: (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>) => { success: boolean; order?: Order; error?: string };
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  updateOrderPaymentStatus: (orderId: string, paymentStatus: 'Paid' | 'Unpaid') => void;
   salesReturns: SalesReturn[];
   recordSalesReturn: (returnData: Omit<SalesReturn, 'id' | 'returnNumber' | 'status'>) => SalesReturn;
   returnSale: (orderId: string, options?: { reason?: string; isResalable?: boolean; refundAmount?: number }) => SalesReturn;
@@ -1206,6 +1207,85 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addAuditLog('Updated Order Status', 'Sales', orderId, `Changed order status to ${status}`);
   };
 
+  const updateOrderPaymentStatus = (orderId: string, paymentStatus: 'Paid' | 'Unpaid') => {
+    const targetOrder = orders.find(o => o.id === orderId || o.orderNumber === orderId);
+    if (!targetOrder) return;
+    if (targetOrder.paymentStatus === paymentStatus) return;
+
+    const grandTotal = targetOrder.grandTotal;
+    const oldAmountPaid = targetOrder.amountPaid || 0;
+    const newAmountPaid = paymentStatus === 'Paid' ? grandTotal : 0;
+    const newAmountRemaining = paymentStatus === 'Paid' ? 0 : grandTotal;
+    const paidDiff = newAmountPaid - oldAmountPaid;
+
+    const updatedOrder: Order = {
+      ...targetOrder,
+      paymentStatus,
+      amountPaid: newAmountPaid,
+      paidAmount: newAmountPaid,
+      amountRemaining: newAmountRemaining,
+      remainingAmount: newAmountRemaining,
+    };
+
+    setOrders(prev => {
+      const next = prev.map(o => (o.id === targetOrder.id ? updatedOrder : o));
+      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    // Update Client balance and Ledger
+    const client = clients.find(c => c.id === targetOrder.clientId);
+    if (client && paidDiff !== 0) {
+      const existingLedger = ledgerEntries[targetOrder.clientId] || [];
+      const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
+      const newBal = lastBal - paidDiff;
+      const today = getTodayKarachiDate();
+
+      const ledgerEntry: LedgerEntry = {
+        id: 'led-' + Date.now() + Math.random(),
+        clientId: targetOrder.clientId,
+        date: today,
+        reference: targetOrder.orderNumber,
+        type: paidDiff > 0 ? 'Payment Received' : 'Reversal',
+        description: paidDiff > 0
+          ? `Payment received for Invoice #${targetOrder.orderNumber} (Marked as Paid)`
+          : `Payment reversed to Unpaid for Invoice #${targetOrder.orderNumber}`,
+        debit: paidDiff < 0 ? Math.abs(paidDiff) : 0,
+        credit: paidDiff > 0 ? paidDiff : 0,
+        balance: newBal,
+        notes: `Payment status updated to ${paymentStatus}`,
+      };
+
+      setLedgerEntries(prev => ({
+        ...prev,
+        [targetOrder.clientId]: [...(prev[targetOrder.clientId] || []), ledgerEntry],
+      }));
+
+      setClients(prev =>
+        prev.map(c => {
+          if (c.id === targetOrder.clientId) {
+            return {
+              ...c,
+              totalPaid: Math.max(0, c.totalPaid + paidDiff),
+              currentBalance: Math.max(0, c.currentBalance - paidDiff),
+              lastTransactionDate: today,
+            };
+          }
+          return c;
+        })
+      );
+    }
+
+    addAuditLog(
+      'Updated Payment Status',
+      'Sales',
+      targetOrder.orderNumber,
+      `Changed payment status of Invoice #${targetOrder.orderNumber} to ${paymentStatus} (Amount: Rs. ${grandTotal.toLocaleString()})`
+    );
+
+    syncMutation('order', 'upsert', updatedOrder);
+  };
+
   // Sales Returns
   const recordSalesReturn = (returnData: Omit<SalesReturn, 'id' | 'returnNumber' | 'status'>): SalesReturn => {
     const returnNumber = `SRTN-${Math.floor(1000 + Math.random() * 1000)}`;
@@ -1913,6 +1993,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         orders,
         createOrder,
         updateOrderStatus,
+        updateOrderPaymentStatus,
         salesReturns,
         recordSalesReturn,
         returnSale,

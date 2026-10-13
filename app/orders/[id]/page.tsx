@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Printer, FileText, Store, MapPin, Phone, Receipt, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Printer, FileText, Store, MapPin, Phone, Receipt, RotateCcw, ChevronDown, CheckCircle } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
@@ -13,7 +13,7 @@ export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = params?.id as string;
-  const { orders, clients, returnSale } = useAppState();
+  const { orders, clients, returnSale, updateOrderPaymentStatus } = useAppState();
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [returnReason, setReturnReason] = useState('Customer returned goods from route');
@@ -54,6 +54,26 @@ export default function OrderDetailsPage() {
         </div>
 
         <div className="flex items-center space-x-2">
+          {order.status !== 'Returned' && (
+            order.paymentStatus !== 'Paid' ? (
+              <button
+                onClick={() => updateOrderPaymentStatus(order.id, 'Paid')}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+                title="Mark this sale invoice as Paid"
+              >
+                <CheckCircle className="h-4 w-4" />
+                <span>Mark Paid</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => updateOrderPaymentStatus(order.id, 'Unpaid')}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg shadow-xs transition"
+                title="Mark this sale invoice as Unpaid"
+              >
+                <span>Mark Unpaid</span>
+              </button>
+            )
+          )}
           {order.status !== 'Returned' && (
             <button
               onClick={() => setIsReturnModalOpen(true)}
@@ -114,7 +134,41 @@ export default function OrderDetailsPage() {
             <p className="text-lg font-black text-slate-900 font-mono">{order.orderNumber}</p>
             <p className="text-xs text-slate-500 font-mono">Date: {formatDateDDMMYYYY(order.orderDate)}</p>
             <div className="pt-1">
-              <StatusBadge status={order.paymentStatus} />
+              <div className="relative inline-block print:hidden">
+                <select
+                  value={order.paymentStatus}
+                  disabled={order.status === 'Returned'}
+                  onChange={(e) => {
+                    const newStatus = e.target.value as 'Paid' | 'Unpaid';
+                    updateOrderPaymentStatus(order.id, newStatus);
+                  }}
+                  className={`appearance-none cursor-pointer pl-4 pr-6 py-0.5 text-xs font-semibold rounded-full border transition-all focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    order.paymentStatus === 'Paid'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100/80 hover:border-emerald-400'
+                      : order.paymentStatus === 'Partially Paid'
+                      ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100/80 hover:border-amber-400'
+                      : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100/80 hover:border-rose-400'
+                  }`}
+                  title="Click to update payment status (Unpaid / Paid)"
+                >
+                  <option value="Unpaid">Unpaid</option>
+                  <option value="Paid">Paid</option>
+                  {order.paymentStatus === 'Partially Paid' && <option value="Partially Paid">Partially Paid</option>}
+                </select>
+                <span
+                  className={`absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full pointer-events-none ${
+                    order.paymentStatus === 'Paid'
+                      ? 'bg-emerald-600'
+                      : order.paymentStatus === 'Partially Paid'
+                      ? 'bg-amber-600'
+                      : 'bg-rose-600'
+                  }`}
+                />
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-current pointer-events-none opacity-60" />
+              </div>
+              <div className="hidden print:inline-block">
+                <StatusBadge status={order.paymentStatus} />
+              </div>
             </div>
           </div>
         </div>

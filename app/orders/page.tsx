@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShoppingCart, Plus, Download, Eye, RotateCcw, AlertTriangle, CheckCircle, Package } from 'lucide-react';
+import { ShoppingCart, Plus, Download, Eye, RotateCcw, AlertTriangle, CheckCircle, Package, ChevronDown } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -13,7 +13,7 @@ import { formatPKR, formatDateDDMMYYYY } from '@/lib/utils';
 
 export default function OrdersPage() {
   const router = useRouter();
-  const { orders, returnSale } = useAppState();
+  const { orders, returnSale, updateOrderPaymentStatus } = useAppState();
 
   const [viewFilter, setViewFilter] = useState<'Active' | 'Returned' | 'All'>('Active');
   const [returnModalOrder, setReturnModalOrder] = useState<Order | null>(null);
@@ -104,7 +104,42 @@ export default function OrdersPage() {
     },
     {
       header: 'Payment Status',
-      cell: (o) => <StatusBadge status={o.paymentStatus} />,
+      cell: (o) => (
+        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+          <select
+            value={o.paymentStatus}
+            disabled={o.status === 'Returned'}
+            onChange={(e) => {
+              const newStatus = e.target.value as 'Paid' | 'Unpaid';
+              updateOrderPaymentStatus(o.id, newStatus);
+              setToastMessage(`Payment status for Order #${o.orderNumber} updated to ${newStatus}.`);
+              setTimeout(() => setToastMessage(null), 4000);
+            }}
+            className={`appearance-none cursor-pointer pl-4 pr-6 py-0.5 text-xs font-semibold rounded-full border transition-all focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 ${
+              o.paymentStatus === 'Paid'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100/80 hover:border-emerald-400'
+                : o.paymentStatus === 'Partially Paid'
+                ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100/80 hover:border-amber-400'
+                : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100/80 hover:border-rose-400'
+            }`}
+            title="Click to update payment status (Unpaid / Paid)"
+          >
+            <option value="Unpaid">Unpaid</option>
+            <option value="Paid">Paid</option>
+            {o.paymentStatus === 'Partially Paid' && <option value="Partially Paid">Partially Paid</option>}
+          </select>
+          <span
+            className={`absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full pointer-events-none ${
+              o.paymentStatus === 'Paid'
+                ? 'bg-emerald-600'
+                : o.paymentStatus === 'Partially Paid'
+                ? 'bg-amber-600'
+                : 'bg-rose-600'
+            }`}
+          />
+          <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-current pointer-events-none opacity-60" />
+        </div>
+      ),
     },
     {
       header: 'Order Status',
