@@ -404,15 +404,29 @@ export async function POST(req: Request) {
 
         case 'daily_closing': {
           const closingRow = mappers.dailyClosingToDb(data);
-          const { error: cErr } = await supabase.from('daily_closings').upsert(closingRow);
+          const { data: upsertedRows, error: cErr } = await supabase
+            .from('daily_closings')
+            .upsert(closingRow, { onConflict: 'date' })
+            .select('id');
           if (cErr) throw cErr;
 
+          const closingId = upsertedRows?.[0]?.id || closingRow.id;
+
           if (Array.isArray(data.items) && data.items.length > 0) {
-            const itemRows = data.items.map((it: any) => mappers.dailyClosingItemToDb(it, closingRow.id));
-            const { error: itemsErr } = await supabase.from('daily_closing_items').upsert(itemRows);
-            if (itemsErr) throw itemsErr;
+            await supabase.from('daily_closing_items').delete().eq('closing_id', closingId);
+            const { data: existingProds } = await supabase.from('products').select('id');
+            const validProdIds = new Set((existingProds || []).map((p: any) => p.id));
+
+            const itemRows = data.items
+              .map((it: any) => mappers.dailyClosingItemToDb(it, closingId))
+              .filter((row: any) => validProdIds.has(row.product_id));
+
+            if (itemRows.length > 0) {
+              const { error: itemsErr } = await supabase.from('daily_closing_items').insert(itemRows);
+              if (itemsErr) throw itemsErr;
+            }
           }
-          return NextResponse.json({ success: true, id: closingRow.id });
+          return NextResponse.json({ success: true, id: closingId });
         }
 
         case 'bad_debt': {

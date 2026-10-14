@@ -100,8 +100,8 @@ export interface LedgerEntry {
   notes?: string;
 }
 
-// Strictly Confectionery & Cold Drinks
-export type ProductCategory = 'Confectionery' | 'Cold Drinks';
+// Strictly Confectionery & Cold Drinks (expandable for any category)
+export type ProductCategory = 'Confectionery' | 'Cold Drinks' | (string & {});
 
 export type ProductPackagingUnit =
   | 'Piece'

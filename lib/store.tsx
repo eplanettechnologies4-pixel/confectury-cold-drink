@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   User,
   Staff,
@@ -46,7 +46,7 @@ import {
   INITIAL_EXPIRY_RECORDS,
 } from './mock-data';
 import { formatDateDDMMYYYY, getTodayKarachiDate, convertUnitQuantity } from './utils';
-import { generateUUID } from './supabase/service';
+import { generateUUID, ensureUUID } from './supabase/service';
 
 interface AppStateContextType {
   currentUser: User | null;
@@ -337,6 +337,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return loadStored<AuditLog[]>('ahmad_audit_logs', 'eplanet_audit_logs', INITIAL_AUDIT_LOGS);
   });
 
+  // Active Refs for immediate synchronous access during batched / looped mutations
+  const productsRef = useRef<Product[]>(products);
+  productsRef.current = products;
+
+  const clientsRef = useRef<Client[]>(clients);
+  clientsRef.current = clients;
+
+  const suppliersRef = useRef<Supplier[]>(suppliers);
+  suppliersRef.current = suppliers;
+
+  const dailyClosingsRef = useRef<DailyClosing[]>(dailyClosings);
+  dailyClosingsRef.current = dailyClosings;
+
   // Persistence Effects
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -403,16 +416,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setAreas(json.data.areas);
             try { localStorage.setItem('ahmad_areas', JSON.stringify(json.data.areas)); } catch (_) {}
           }
-          if (Array.isArray(json.data.clients)) {
+          if (Array.isArray(json.data.clients) && json.data.clients.length > 0) {
             setClients(json.data.clients);
+            clientsRef.current = json.data.clients;
             try { localStorage.setItem('ahmad_clients', JSON.stringify(json.data.clients)); } catch (_) {}
           }
-          if (Array.isArray(json.data.products)) {
+          if (Array.isArray(json.data.products) && json.data.products.length > 0) {
             setProducts(json.data.products);
+            productsRef.current = json.data.products;
             try { localStorage.setItem('ahmad_products', JSON.stringify(json.data.products)); } catch (_) {}
           }
-          if (Array.isArray(json.data.suppliers)) {
+          if (Array.isArray(json.data.suppliers) && json.data.suppliers.length > 0) {
             setSuppliers(json.data.suppliers);
+            suppliersRef.current = json.data.suppliers;
             try { localStorage.setItem('ahmad_suppliers', JSON.stringify(json.data.suppliers)); } catch (_) {}
           }
           if (Array.isArray(json.data.supplierPayments)) {
@@ -451,9 +467,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setExpenses(json.data.expenses);
             try { localStorage.setItem('ahmad_expenses', JSON.stringify(json.data.expenses)); } catch (_) {}
           }
-          if (Array.isArray(json.data.dailyClosings)) {
+          if (Array.isArray(json.data.dailyClosings) && json.data.dailyClosings.length > 0) {
             setDailyClosings(json.data.dailyClosings);
+            dailyClosingsRef.current = json.data.dailyClosings;
             try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(json.data.dailyClosings)); } catch (_) {}
+          } else {
+            // Keep local closings if Supabase has 0, and upload to Supabase
+            const localClosings = loadStored<DailyClosing[]>('ahmad_daily_closings', 'eplanet_daily_closings', []);
+            if (Array.isArray(localClosings) && localClosings.length > 0) {
+              setDailyClosings(localClosings);
+              dailyClosingsRef.current = localClosings;
+              localClosings.forEach(dc => syncMutation('daily_closing', 'upsert', dc));
+            }
           }
           if (Array.isArray(json.data.badDebts)) {
             setBadDebts(json.data.badDebts);
@@ -551,7 +576,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Closed day helper
   const isDateClosed = (dateStr: string): boolean => {
-    const closing = dailyClosings.find(c => c.date === dateStr);
+    const closing = dailyClosingsRef.current.find(c => c.date === dateStr) || dailyClosings.find(c => c.date === dateStr);
     return closing?.status === 'CLOSED';
   };
 
@@ -663,21 +688,50 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const newProduct: Product = {
       ...productData,
       id: generateUUID(),
+      currentStock,
       reservedStock: 0,
       availableStock: currentStock,
       status,
     };
-    setProducts(prev => [newProduct, ...prev]);
+
+    productsRef.current = [newProduct, ...productsRef.current];
+
+    setProducts(prev => {
+      const next = [newProduct, ...prev];
+      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
 
     // Record initial opening stock transaction if stock > 0
     if (currentStock > 0) {
-      recordStockMovement(
-        newProduct.id,
-        'OPENING_STOCK',
-        currentStock,
-        `OPN-${newProduct.sku}`,
-        'Initial product opening stock inventory balance'
-      );
+      const tx: InventoryTransaction = {
+        id: generateUUID(),
+        date: getTodayKarachiDate(),
+        reference: `OPN-${newProduct.sku}`,
+        productId: newProduct.id,
+        productName: newProduct.name,
+        sku: newProduct.sku,
+        category: newProduct.category,
+        batch: newProduct.batchNumber,
+        type: 'OPENING_STOCK',
+        quantity: currentStock,
+        unit: newProduct.unit,
+        previousStock: 0,
+        newStock: currentStock,
+        unitCost: newProduct.costPrice,
+        totalCost: currentStock * newProduct.costPrice,
+        user: currentUser?.name || 'Inventory Manager',
+        notes: 'Initial product opening stock inventory balance',
+        supplier: newProduct.supplier,
+        warehouse: 'Khuram Chowk Warehouse',
+      };
+
+      setInventoryTransactions(prev => {
+        const next = [tx, ...prev];
+        try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('inventory_tx', 'upsert', tx);
     }
 
     addAuditLog('Added Product', 'Inventory', newProduct.sku, `Added product ${newProduct.name} (${newProduct.category})`);
@@ -686,23 +740,32 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateProduct = (id: string, productData: Partial<Product>) => {
-    setProducts(prev =>
-      prev.map(p => {
+    let updatedProduct: Product | undefined;
+    setProducts(prev => {
+      const next = prev.map(p => {
         if (p.id !== id) return p;
         const updated = { ...p, ...productData };
-        syncMutation('product', 'upsert', updated);
         const avail = updated.currentStock - updated.reservedStock;
         let status: Product['status'] = 'In Stock';
         if (updated.currentStock === 0) status = 'Out of Stock';
         else if (updated.currentStock <= updated.minStockLevel) status = 'Low Stock';
-        return { ...updated, availableStock: Math.max(0, avail), status };
-      })
-    );
+        updatedProduct = { ...updated, availableStock: Math.max(0, avail), status };
+        return updatedProduct;
+      });
+      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    if (updatedProduct) {
+      productsRef.current = productsRef.current.map(p => (p.id === id ? updatedProduct! : p));
+      syncMutation('product', 'upsert', updatedProduct);
+    }
     addAuditLog('Updated Product', 'Inventory', id, `Updated product attributes`);
   };
 
   const deleteProduct = (id: string) => {
-    const target = products.find(p => p.id === id);
+    const target = productsRef.current.find(p => p.id === id) || products.find(p => p.id === id);
+    productsRef.current = productsRef.current.filter(p => p.id !== id);
     setProducts(prev => {
       const updated = prev.filter(p => p.id !== id);
       try { localStorage.setItem('ahmad_products', JSON.stringify(updated)); } catch (_) {}
@@ -713,28 +776,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const adjustProductStock = (productId: string, newStock: number, reason?: string) => {
-    const product = products.find(p => p.id === productId);
+    const product = productsRef.current.find(p => p.id === productId) || products.find(p => p.id === productId);
     if (!product) return;
     const prevStock = product.currentStock;
     const targetStock = Math.max(0, Number(newStock));
     const delta = targetStock - prevStock;
     if (delta === 0) return;
 
-    setProducts(prev =>
-      prev.map(p => {
-        if (p.id !== productId) return p;
-        const avail = Math.max(0, targetStock - p.reservedStock);
-        let status: Product['status'] = 'In Stock';
-        if (targetStock === 0) status = 'Out of Stock';
-        else if (targetStock <= p.minStockLevel) status = 'Low Stock';
-        return {
-          ...p,
-          currentStock: targetStock,
-          availableStock: avail,
-          status,
-        };
-      })
-    );
+    const avail = Math.max(0, targetStock - product.reservedStock);
+    let status: Product['status'] = 'In Stock';
+    if (targetStock === 0) status = 'Out of Stock';
+    else if (targetStock <= product.minStockLevel) status = 'Low Stock';
+
+    const updatedProduct: Product = {
+      ...product,
+      currentStock: targetStock,
+      availableStock: avail,
+      status,
+    };
+
+    productsRef.current = productsRef.current.map(p => (p.id === productId ? updatedProduct : p));
+
+    setProducts(prev => {
+      const next = prev.map(p => (p.id === productId ? updatedProduct : p));
+      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    syncMutation('product', 'upsert', updatedProduct);
 
     const tx: InventoryTransaction = {
       id: generateUUID(),
@@ -756,7 +825,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       notes: reason || `Stock adjusted from ${prevStock} to ${targetStock} ${product.unit}`,
       warehouse: 'Khuram Chowk Warehouse',
     };
-    setInventoryTransactions(prev => [tx, ...prev]);
+
+    setInventoryTransactions(prev => {
+      const next = [tx, ...prev];
+      try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    syncMutation('inventory_tx', 'upsert', tx);
+
     addAuditLog('Stock Adjustment', 'Inventory', product.sku, `Adjusted stock of ${product.name} from ${prevStock} to ${targetStock} (${delta >= 0 ? '+' : ''}${delta} ${product.unit})`);
   };
 
@@ -852,17 +928,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setSupplierPayments(prev => [newPayment, ...prev]);
 
     // Reduce supplier payable balance (Does NOT affect operational expense or sales)
-    setSuppliers(prev =>
-      prev.map(s => {
-        if (s.id === paymentData.supplierId) {
-          return {
-            ...s,
-            currentPayable: Math.max(0, s.currentPayable - paymentData.amount),
-          };
-        }
-        return s;
-      })
-    );
+    let updatedSupplier: Supplier | undefined;
+    const supp = suppliersRef.current.find(s => s.id === paymentData.supplierId) || suppliers.find(s => s.id === paymentData.supplierId);
+    if (supp) {
+      updatedSupplier = {
+        ...supp,
+        currentPayable: Math.max(0, supp.currentPayable - paymentData.amount),
+      };
+      suppliersRef.current = suppliersRef.current.map(s => (s.id === paymentData.supplierId ? updatedSupplier! : s));
+      setSuppliers(prev => {
+        const next = prev.map(s => (s.id === paymentData.supplierId ? updatedSupplier! : s));
+        try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('supplier', 'upsert', updatedSupplier);
+    }
 
     addAuditLog('Supplier Payment', 'Finance', paymentNumber, `Paid Rs. ${paymentData.amount.toLocaleString()} to ${paymentData.supplierName}`);
     syncMutation('supplier_payment', 'upsert', newPayment);
@@ -910,14 +990,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (item.expiryDate) {
         const existingExp = expiryRecords.find(e => e.productId === item.productId && e.batch === item.batchNumber);
         if (existingExp) {
+          const updatedExp: ExpiryRecord = { ...existingExp, quantity: existingExp.quantity + item.quantity };
           setExpiryRecords(prev =>
             prev.map(e =>
-              e.id === existingExp.id ? { ...e, quantity: e.quantity + item.quantity } : e
+              e.id === existingExp.id ? updatedExp : e
             )
           );
+          syncMutation('expiry_record', 'upsert', updatedExp);
         } else {
           const newExp: ExpiryRecord = {
-            id: 'exp-' + Date.now() + Math.random(),
+            id: generateUUID(),
             productId: item.productId,
             productName: item.productName,
             category: item.category,
@@ -929,23 +1011,27 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             status: 'Safe',
           };
           setExpiryRecords(prev => [...prev, newExp]);
+          syncMutation('expiry_record', 'upsert', newExp);
         }
       }
     });
 
     // 2. Increase supplier payable by remaining unpaid balance
     if (purchase.remainingPayable > 0) {
-      setSuppliers(prev =>
-        prev.map(s => {
-          if (s.id === purchase.supplierId) {
-            return {
-              ...s,
-              currentPayable: s.currentPayable + purchase.remainingPayable,
-            };
-          }
-          return s;
-        })
-      );
+      const supp = suppliersRef.current.find(s => s.id === purchase.supplierId) || suppliers.find(s => s.id === purchase.supplierId);
+      if (supp) {
+        const updatedSupplier: Supplier = {
+          ...supp,
+          currentPayable: supp.currentPayable + purchase.remainingPayable,
+        };
+        suppliersRef.current = suppliersRef.current.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
+        setSuppliers(prev => {
+          const next = prev.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
+          try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
+          return next;
+        });
+        syncMutation('supplier', 'upsert', updatedSupplier);
+      }
     }
   };
 
@@ -958,8 +1044,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       throw new Error(`Cannot post purchase: Business day ${formatDateDDMMYYYY(purchase.purchaseDate)} is closed.`);
     }
 
-    setPurchases(prev => prev.map(p => (p.id === purchaseId ? { ...p, status: 'Posted' } : p)));
-    applyPostedPurchase({ ...purchase, status: 'Posted' });
+    const updatedPurchase: Purchase = { ...purchase, status: 'Posted' };
+    setPurchases(prev => prev.map(p => (p.id === purchaseId ? updatedPurchase : p)));
+    syncMutation('purchase', 'upsert', updatedPurchase);
+    applyPostedPurchase(updatedPurchase);
     addAuditLog('Posted Purchase', 'Purchases', purchase.invoiceNumber, `Posted purchase #${purchase.invoiceNumber} into inventory`);
     return true;
   };
@@ -988,17 +1076,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     // 2. Reduce supplier payable
-    setSuppliers(prev =>
-      prev.map(s => {
-        if (s.id === newReturn.supplierId) {
-          return {
-            ...s,
-            currentPayable: Math.max(0, s.currentPayable - newReturn.refundAmount),
-          };
-        }
-        return s;
-      })
-    );
+    const supp = suppliersRef.current.find(s => s.id === newReturn.supplierId) || suppliers.find(s => s.id === newReturn.supplierId);
+    if (supp) {
+      const updatedSupplier: Supplier = {
+        ...supp,
+        currentPayable: Math.max(0, supp.currentPayable - newReturn.refundAmount),
+      };
+      suppliersRef.current = suppliersRef.current.map(s => (s.id === newReturn.supplierId ? updatedSupplier : s));
+      setSuppliers(prev => {
+        const next = prev.map(s => (s.id === newReturn.supplierId ? updatedSupplier : s));
+        try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('supplier', 'upsert', updatedSupplier);
+    }
 
     // 3. Mark the original purchase as Returned so it is removed from active Daily Purchases!
     const targetPurchase = purchases.find(p => p.id === newReturn.purchaseId || p.invoiceNumber === newReturn.purchaseInvoiceNumber);
@@ -1043,17 +1134,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // 2. Reduce supplier payable
     const payableToReduce = purchase.remainingPayable > 0 ? purchase.remainingPayable : purchase.grandTotal;
-    setSuppliers(prev =>
-      prev.map(s => {
-        if (s.id === purchase.supplierId) {
-          return {
-            ...s,
-            currentPayable: Math.max(0, s.currentPayable - payableToReduce),
-          };
-        }
-        return s;
-      })
-    );
+    const supp = suppliersRef.current.find(s => s.id === purchase.supplierId) || suppliers.find(s => s.id === purchase.supplierId);
+    if (supp) {
+      const updatedSupplier: Supplier = {
+        ...supp,
+        currentPayable: Math.max(0, supp.currentPayable - payableToReduce),
+      };
+      suppliersRef.current = suppliersRef.current.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
+      setSuppliers(prev => {
+        const next = prev.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
+        try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('supplier', 'upsert', updatedSupplier);
+    }
 
     // 3. Create master PurchaseReturn record
     const firstItem = purchase.items[0];
@@ -1108,8 +1202,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // 2. Check stock availability for every line
+    const currentProds = productsRef.current.length > 0 ? productsRef.current : products;
     for (const item of orderData.items) {
-      const prod = products.find(p => p.id === item.productId);
+      const prod = currentProds.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
       if (!prod) {
         return { success: false, error: `Product ${item.productName} not found.` };
       }
@@ -1131,7 +1226,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       createdAt: getTodayKarachiDate(),
     };
 
-    setOrders(prev => [newOrder, ...prev]);
+    setOrders(prev => {
+      const next = [newOrder, ...prev];
+      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
 
     // 3. Deduct stock for all ordered products
     newOrder.items.forEach(item => {
@@ -1150,7 +1249,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 4. Update Client Ledger and Receivables
     // Credit amount = grandTotal - amountPaid
     const creditCreated = newOrder.grandTotal - newOrder.amountPaid;
-    const client = clients.find(c => c.id === newOrder.clientId);
+    const client = clientsRef.current.find(c => c.id === newOrder.clientId) || clients.find(c => c.id === newOrder.clientId);
 
     if (client) {
       const existingLedger = ledgerEntries[newOrder.clientId] || [];
@@ -1158,7 +1257,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const newBal = lastBal + creditCreated;
 
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now() + Math.random(),
+        id: generateUUID(),
         clientId: newOrder.clientId,
         date: newOrder.orderDate,
         reference: orderNumber,
@@ -1169,26 +1268,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         balance: newBal,
       };
 
-      setLedgerEntries(prev => ({
-        ...prev,
-        [newOrder.clientId]: [...(prev[newOrder.clientId] || []), ledgerEntry],
-      }));
+      setLedgerEntries(prev => {
+        const next = {
+          ...prev,
+          [newOrder.clientId]: [...(prev[newOrder.clientId] || []), ledgerEntry],
+        };
+        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('ledger', 'upsert', ledgerEntry);
 
       // Update client balance & purchases
-      setClients(prev =>
-        prev.map(c => {
-          if (c.id === newOrder.clientId) {
-            return {
-              ...c,
-              totalPurchases: c.totalPurchases + newOrder.grandTotal,
-              currentBalance: c.currentBalance + creditCreated,
-              totalPaid: c.totalPaid + newOrder.amountPaid,
-              lastTransactionDate: newOrder.orderDate,
-            };
-          }
-          return c;
-        })
-      );
+      const updatedClient: Client = {
+        ...client,
+        totalPurchases: client.totalPurchases + newOrder.grandTotal,
+        currentBalance: client.currentBalance + creditCreated,
+        totalPaid: client.totalPaid + newOrder.amountPaid,
+        lastTransactionDate: newOrder.orderDate,
+      };
+
+      clientsRef.current = clientsRef.current.map(c => (c.id === newOrder.clientId ? updatedClient : c));
+
+      setClients(prev => {
+        const next = prev.map(c => (c.id === newOrder.clientId ? updatedClient : c));
+        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('client', 'upsert', updatedClient);
     }
 
     addAuditLog('Created Sale', 'Sales', orderNumber, `Sale #${orderNumber} for ${newOrder.companyName} - Total: Rs. ${newOrder.grandTotal.toLocaleString()}, Cash: Rs. ${newOrder.amountPaid.toLocaleString()}, Credit: Rs. ${creditCreated.toLocaleString()}`);
@@ -1197,13 +1303,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        syncMutation('order', 'upsert', { ...o, status });
-        return { ...o, status };
-      }
-      return o;
-    }));
+    setOrders(prev => {
+      const next = prev.map(o => {
+        if (o.id === orderId) {
+          const updated = { ...o, status };
+          syncMutation('order', 'upsert', updated);
+          return updated;
+        }
+        return o;
+      });
+      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
     addAuditLog('Updated Order Status', 'Sales', orderId, `Changed order status to ${status}`);
   };
 
@@ -1234,7 +1345,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     // Update Client balance and Ledger
-    const client = clients.find(c => c.id === targetOrder.clientId);
+    const client = clientsRef.current.find(c => c.id === targetOrder.clientId) || clients.find(c => c.id === targetOrder.clientId);
     if (client && paidDiff !== 0) {
       const existingLedger = ledgerEntries[targetOrder.clientId] || [];
       const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
@@ -1242,7 +1353,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const today = getTodayKarachiDate();
 
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now() + Math.random(),
+        id: generateUUID(),
         clientId: targetOrder.clientId,
         date: today,
         reference: targetOrder.orderNumber,
@@ -1256,24 +1367,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notes: `Payment status updated to ${paymentStatus}`,
       };
 
-      setLedgerEntries(prev => ({
-        ...prev,
-        [targetOrder.clientId]: [...(prev[targetOrder.clientId] || []), ledgerEntry],
-      }));
+      setLedgerEntries(prev => {
+        const next = {
+          ...prev,
+          [targetOrder.clientId]: [...(prev[targetOrder.clientId] || []), ledgerEntry],
+        };
+        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('ledger', 'upsert', ledgerEntry);
 
-      setClients(prev =>
-        prev.map(c => {
-          if (c.id === targetOrder.clientId) {
-            return {
-              ...c,
-              totalPaid: Math.max(0, c.totalPaid + paidDiff),
-              currentBalance: Math.max(0, c.currentBalance - paidDiff),
-              lastTransactionDate: today,
-            };
-          }
-          return c;
-        })
-      );
+      const updatedClient: Client = {
+        ...client,
+        totalPaid: Math.max(0, client.totalPaid + paidDiff),
+        currentBalance: Math.max(0, client.currentBalance - paidDiff),
+        lastTransactionDate: today,
+      };
+
+      clientsRef.current = clientsRef.current.map(c => (c.id === targetOrder.clientId ? updatedClient : c));
+
+      setClients(prev => {
+        const next = prev.map(c => (c.id === targetOrder.clientId ? updatedClient : c));
+        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('client', 'upsert', updatedClient);
     }
 
     addAuditLog(
@@ -1296,7 +1414,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       status: 'Completed',
     };
 
-    setSalesReturns(prev => [newReturn, ...prev]);
+    setSalesReturns(prev => {
+      const next = [newReturn, ...prev];
+      try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
 
     // 1. If resalable, add back to saleable stock. If damaged, record as damaged stock!
     if (newReturn.isResalable) {
@@ -1312,7 +1434,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     } else {
       // Unsaleable / damaged return
-      const prod = products.find(p => p.id === newReturn.productId);
+      const prod = productsRef.current.find(p => p.id === newReturn.productId) || products.find(p => p.id === newReturn.productId);
       const cost = prod?.costPrice || 0;
       const damagedRecord: DamagedStockRecord = {
         id: generateUUID(),
@@ -1328,11 +1450,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         reason: `Customer return damaged: ${newReturn.reason}`,
         recordedBy: currentUser?.name || 'Sales Staff',
       };
-      setDamagedStockRecords(prev => [...prev, damagedRecord]);
+      setDamagedStockRecords(prev => {
+        const next = [...prev, damagedRecord];
+        try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('damaged_stock', 'upsert', damagedRecord);
     }
 
     // 2. Adjust customer ledger & receivable
-    const client = clients.find(c => c.id === newReturn.clientId);
+    const client = clientsRef.current.find(c => c.id === newReturn.clientId) || clients.find(c => c.id === newReturn.clientId);
     if (client) {
       const existingLedger = ledgerEntries[newReturn.clientId] || [];
       const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
@@ -1351,24 +1478,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notes: newReturn.reason,
       };
 
-      setLedgerEntries(prev => ({
-        ...prev,
-        [newReturn.clientId]: [...(prev[newReturn.clientId] || []), ledgerEntry],
-      }));
+      setLedgerEntries(prev => {
+        const next = {
+          ...prev,
+          [newReturn.clientId]: [...(prev[newReturn.clientId] || []), ledgerEntry],
+        };
+        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('ledger', 'upsert', ledgerEntry);
 
-      setClients(prev =>
-        prev.map(c => {
-          if (c.id === newReturn.clientId) {
-            return {
-              ...c,
-              totalPurchases: Math.max(0, c.totalPurchases - newReturn.refundAmount),
-              currentBalance: Math.max(0, c.currentBalance - newReturn.refundAmount),
-              lastTransactionDate: newReturn.returnDate,
-            };
-          }
-          return c;
-        })
-      );
+      const updatedClient: Client = {
+        ...client,
+        totalPurchases: Math.max(0, client.totalPurchases - newReturn.refundAmount),
+        currentBalance: Math.max(0, client.currentBalance - newReturn.refundAmount),
+        lastTransactionDate: newReturn.returnDate,
+      };
+
+      clientsRef.current = clientsRef.current.map(c => (c.id === newReturn.clientId ? updatedClient : c));
+
+      setClients(prev => {
+        const next = prev.map(c => (c.id === newReturn.clientId ? updatedClient : c));
+        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('client', 'upsert', updatedClient);
     }
 
     // 3. Mark the original order as Returned so it is automatically removed from active Daily Sales!
@@ -1414,7 +1548,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           item.unit
         );
       } else {
-        const prod = products.find(p => p.id === item.productId);
+        const prod = productsRef.current.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
         const cost = prod?.costPrice || 0;
         const damagedRecord: DamagedStockRecord = {
           id: generateUUID(),
@@ -1430,12 +1564,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           reason: `Returned damaged from #${order.orderNumber}: ${reason}`,
           recordedBy: currentUser?.name || 'Sales Staff',
         };
-        setDamagedStockRecords(prev => [...prev, damagedRecord]);
+        setDamagedStockRecords(prev => {
+          const next = [...prev, damagedRecord];
+          try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(next)); } catch (_) {}
+          return next;
+        });
+        syncMutation('damaged_stock', 'upsert', damagedRecord);
       }
     });
 
     // 2. Adjust customer ledger & balance
-    const client = clients.find(c => c.id === order.clientId);
+    const client = clientsRef.current.find(c => c.id === order.clientId) || clients.find(c => c.id === order.clientId);
     if (client) {
       const existingLedger = ledgerEntries[order.clientId] || [];
       const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
@@ -1455,24 +1594,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notes: reason,
       };
 
-      setLedgerEntries(prev => ({
-        ...prev,
-        [order.clientId]: [...(prev[order.clientId] || []), ledgerEntry],
-      }));
+      setLedgerEntries(prev => {
+        const next = {
+          ...prev,
+          [order.clientId]: [...(prev[order.clientId] || []), ledgerEntry],
+        };
+        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('ledger', 'upsert', ledgerEntry);
 
-      setClients(prev =>
-        prev.map(c => {
-          if (c.id === order.clientId) {
-            return {
-              ...c,
-              totalPurchases: Math.max(0, c.totalPurchases - order.grandTotal),
-              currentBalance: Math.max(0, c.currentBalance - (creditToReverse > 0 ? creditToReverse : refundAmount)),
-              lastTransactionDate: returnDate,
-            };
-          }
-          return c;
-        })
-      );
+      const updatedClient: Client = {
+        ...client,
+        totalPurchases: Math.max(0, client.totalPurchases - order.grandTotal),
+        currentBalance: Math.max(0, client.currentBalance - (creditToReverse > 0 ? creditToReverse : refundAmount)),
+        lastTransactionDate: returnDate,
+      };
+
+      clientsRef.current = clientsRef.current.map(c => (c.id === order.clientId ? updatedClient : c));
+
+      setClients(prev => {
+        const next = prev.map(c => (c.id === order.clientId ? updatedClient : c));
+        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('client', 'upsert', updatedClient);
     }
 
     // 3. Create master SalesReturn record
@@ -1535,10 +1681,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       status: 'Completed',
     };
 
-    setPayments(prev => [newPayment, ...prev]);
+    setPayments(prev => {
+      const next = [newPayment, ...prev];
+      try { localStorage.setItem('ahmad_payments', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
 
     // Update Client balance and Ledger
-    const client = clients.find(c => c.id === paymentData.clientId);
+    const client = clientsRef.current.find(c => c.id === paymentData.clientId) || clients.find(c => c.id === paymentData.clientId);
     if (client) {
       const existingLedger = ledgerEntries[paymentData.clientId] || [];
       const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
@@ -1557,24 +1707,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notes: paymentData.notes,
       };
 
-      setLedgerEntries(prev => ({
-        ...prev,
-        [paymentData.clientId]: [...(prev[paymentData.clientId] || []), ledgerEntry],
-      }));
+      setLedgerEntries(prev => {
+        const next = {
+          ...prev,
+          [paymentData.clientId]: [...(prev[paymentData.clientId] || []), ledgerEntry],
+        };
+        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('ledger', 'upsert', ledgerEntry);
 
-      setClients(prev =>
-        prev.map(c => {
-          if (c.id === paymentData.clientId) {
-            return {
-              ...c,
-              totalPaid: c.totalPaid + paymentData.amount,
-              currentBalance: c.currentBalance - paymentData.amount,
-              lastTransactionDate: paymentData.paymentDate,
-            };
-          }
-          return c;
-        })
-      );
+      const updatedClient: Client = {
+        ...client,
+        totalPaid: client.totalPaid + paymentData.amount,
+        currentBalance: client.currentBalance - paymentData.amount,
+        lastTransactionDate: paymentData.paymentDate,
+      };
+
+      clientsRef.current = clientsRef.current.map(c => (c.id === paymentData.clientId ? updatedClient : c));
+
+      setClients(prev => {
+        const next = prev.map(c => (c.id === paymentData.clientId ? updatedClient : c));
+        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('client', 'upsert', updatedClient);
     }
 
     addAuditLog('Recorded Collection', 'Accounts', paymentNumber, `Collection of Rs. ${paymentData.amount.toLocaleString()} from ${client?.companyName || 'Customer'} via ${paymentData.paymentMethod}`);
@@ -1597,29 +1754,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     warehouse?: string,
     unit?: string
   ) => {
-    const product = products.find(p => p.id === productId);
+    const product = productsRef.current.find(p => p.id === productId) || products.find(p => p.id === productId);
     if (!product) return;
 
     const prevStock = product.currentStock;
     const newStock = Math.max(0, prevStock + quantity);
+    const avail = newStock - product.reservedStock;
+    let status: Product['status'] = 'In Stock';
+    if (newStock === 0) status = 'Out of Stock';
+    else if (newStock <= product.minStockLevel) status = 'Low Stock';
 
-    // Update product stock
-    setProducts(prev =>
-      prev.map(p => {
-        if (p.id !== productId) return p;
-        const avail = newStock - p.reservedStock;
-        let status: Product['status'] = 'In Stock';
-        if (newStock === 0) status = 'Out of Stock';
-        else if (newStock <= p.minStockLevel) status = 'Low Stock';
+    const updatedProduct: Product = {
+      ...product,
+      currentStock: newStock,
+      availableStock: Math.max(0, avail),
+      status,
+    };
 
-        return {
-          ...p,
-          currentStock: newStock,
-          availableStock: Math.max(0, avail),
-          status,
-        };
-      })
-    );
+    productsRef.current = productsRef.current.map(p => (p.id === productId ? updatedProduct : p));
+
+    setProducts(prev => {
+      const next = prev.map(p => (p.id === productId ? updatedProduct : p));
+      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+
+    // Sync updated product to Supabase
+    syncMutation('product', 'upsert', updatedProduct);
 
     // Record stock transaction history
     const tx: InventoryTransaction = {
@@ -1644,18 +1805,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       warehouse: warehouse || 'Khuram Chowk Warehouse',
     };
 
-    setInventoryTransactions(prev => [tx, ...prev]);
+    setInventoryTransactions(prev => {
+      const next = [tx, ...prev];
+      try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
     syncMutation('inventory_tx', 'upsert', tx);
     addAuditLog('Stock Movement', 'Inventory', reference, `${type} of ${Math.abs(quantity)} units for ${product.name}`);
   };
 
   // Daily Closing Stock & Reconciliation
   const getDailyClosingForDate = (dateStr: string): DailyClosing => {
-    const existing = dailyClosings.find(c => c.date === dateStr);
+    const existing = dailyClosingsRef.current.find(c => c.date === dateStr) || dailyClosings.find(c => c.date === dateStr);
     if (existing) return existing;
 
     // Calculate dynamic closing stock line items for this date
-    const items: DailyClosingItem[] = products.map(prod => {
+    const currentProducts = productsRef.current.length > 0 ? productsRef.current : products;
+    const items: DailyClosingItem[] = currentProducts.map(prod => {
       // Find transactions on this date for this product
       const txs = inventoryTransactions.filter(t => t.productId === prod.id && t.date === dateStr);
       let purchases = 0;
@@ -1704,7 +1870,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     const newClosing: DailyClosing = {
-      id: 'cls-' + Date.now(),
+      id: ensureUUID('cls-' + dateStr, '90000001'),
       date: dateStr,
       status: 'OPEN',
       items,
@@ -1713,57 +1879,87 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const saveDailyClosingCount = (dateStr: string, updatedItems: DailyClosingItem[]) => {
+    const existing = dailyClosingsRef.current.find(c => c.date === dateStr) || dailyClosings.find(c => c.date === dateStr);
+    const updatedRecord: DailyClosing = existing
+      ? { ...existing, items: updatedItems, status: existing.status === 'CLOSED' ? 'CLOSED' : 'RECONCILIATION' }
+      : { id: ensureUUID('cls-' + dateStr, '90000001'), date: dateStr, status: 'RECONCILIATION', items: updatedItems };
+
+    dailyClosingsRef.current = dailyClosingsRef.current.some(c => c.date === dateStr)
+      ? dailyClosingsRef.current.map(c => (c.date === dateStr ? updatedRecord : c))
+      : [...dailyClosingsRef.current, updatedRecord];
+
     setDailyClosings(prev => {
       const idx = prev.findIndex(c => c.date === dateStr);
+      let next: DailyClosing[];
       if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = { ...updated[idx], items: updatedItems, status: 'RECONCILIATION' };
-        return updated;
+        next = [...prev];
+        next[idx] = updatedRecord;
+      } else {
+        next = [...prev, updatedRecord];
       }
-      return [...prev, { id: 'cls-' + Date.now(), date: dateStr, status: 'RECONCILIATION', items: updatedItems }];
+      try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(next)); } catch (_) {}
+      return next;
     });
+
     addAuditLog('Reconciliation Count', 'Closing', dateStr, `Updated physical stock counts for ${formatDateDDMMYYYY(dateStr)}`);
+    syncMutation('daily_closing', 'upsert', updatedRecord);
   };
 
   const closeBusinessDay = (dateStr: string, closedBy: string): boolean => {
+    const existing = dailyClosingsRef.current.find(c => c.date === dateStr) || dailyClosings.find(c => c.date === dateStr) || getDailyClosingForDate(dateStr);
+    const updatedRecord: DailyClosing = {
+      ...existing,
+      id: existing.id || ensureUUID('cls-' + dateStr, '90000001'),
+      date: dateStr,
+      status: 'CLOSED',
+      closedAt: new Date().toISOString(),
+      closedBy,
+    };
+
+    dailyClosingsRef.current = dailyClosingsRef.current.some(c => c.date === dateStr)
+      ? dailyClosingsRef.current.map(c => (c.date === dateStr ? updatedRecord : c))
+      : [...dailyClosingsRef.current, updatedRecord];
+
     setDailyClosings(prev => {
       const idx = prev.findIndex(c => c.date === dateStr);
-      const closingRecord = idx >= 0 ? prev[idx] : getDailyClosingForDate(dateStr);
-      const updatedRecord: DailyClosing = {
-        ...closingRecord,
-        status: 'CLOSED',
-        closedAt: new Date().toISOString(),
-        closedBy,
-      };
+      let next: DailyClosing[];
       if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = updatedRecord;
-        return copy;
+        next = [...prev];
+        next[idx] = updatedRecord;
+      } else {
+        next = [...prev, updatedRecord];
       }
-      return [...prev, updatedRecord];
+      try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(next)); } catch (_) {}
+      return next;
     });
 
     addAuditLog('Closed Business Day', 'Closing', dateStr, `Business day ${formatDateDDMMYYYY(dateStr)} officially CLOSED by ${closedBy}. Transactions locked.`);
+    syncMutation('daily_closing', 'upsert', updatedRecord);
     return true;
   };
 
   const reopenBusinessDay = (dateStr: string, reopenedBy: string, reason: string): boolean => {
-    setDailyClosings(prev =>
-      prev.map(c => {
-        if (c.date === dateStr) {
-          return {
-            ...c,
-            status: 'OPEN',
-            reopenedAt: new Date().toISOString(),
-            reopenedBy,
-            reopenReason: reason,
-          };
-        }
-        return c;
-      })
-    );
+    const existing = dailyClosingsRef.current.find(c => c.date === dateStr) || dailyClosings.find(c => c.date === dateStr);
+    if (!existing) return false;
+
+    const updatedRecord: DailyClosing = {
+      ...existing,
+      status: 'OPEN',
+      reopenedAt: new Date().toISOString(),
+      reopenedBy,
+      reopenReason: reason,
+    };
+
+    dailyClosingsRef.current = dailyClosingsRef.current.map(c => (c.date === dateStr ? updatedRecord : c));
+
+    setDailyClosings(prev => {
+      const next = prev.map(c => (c.date === dateStr ? updatedRecord : c));
+      try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
 
     addAuditLog('Reopened Business Day', 'Closing', dateStr, `Business day ${formatDateDDMMYYYY(dateStr)} REOPENED by ${reopenedBy}. Reason: ${reason}`);
+    syncMutation('daily_closing', 'upsert', updatedRecord);
     return true;
   };
 
@@ -1801,16 +1997,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = badDebts.find(b => b.id === id);
     if (!target || target.status === 'Approved') return;
 
-    setBadDebts(prev =>
-      prev.map(b =>
-        b.id === id
-          ? { ...b, status: 'Approved', approvedBy, approvalDate: new Date().toISOString() }
-          : b
-      )
-    );
+    const updatedBadDebt: BadDebt = {
+      ...target,
+      status: 'Approved',
+      approvedBy,
+      approvalDate: new Date().toISOString(),
+    };
+
+    setBadDebts(prev => {
+      const next = prev.map(b => (b.id === id ? updatedBadDebt : b));
+      try { localStorage.setItem('ahmad_bad_debts', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    syncMutation('bad_debt', 'upsert', updatedBadDebt);
 
     // Reduce Customer Receivable balance & add ledger entry
-    const client = clients.find(c => c.id === target.clientId);
+    const client = clientsRef.current.find(c => c.id === target.clientId) || clients.find(c => c.id === target.clientId);
     if (client) {
       const existingLedger = ledgerEntries[target.clientId] || [];
       const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
@@ -1828,23 +2030,30 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         balance: newBal,
       };
 
-      setLedgerEntries(prev => ({
-        ...prev,
-        [target.clientId]: [...(prev[target.clientId] || []), ledgerEntry],
-      }));
+      setLedgerEntries(prev => {
+        const next = {
+          ...prev,
+          [target.clientId]: [...(prev[target.clientId] || []), ledgerEntry],
+        };
+        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('ledger', 'upsert', ledgerEntry);
 
-      setClients(prev =>
-        prev.map(c => {
-          if (c.id === target.clientId) {
-            return {
-              ...c,
-              currentBalance: Math.max(0, c.currentBalance - target.writeOffAmount),
-              lastTransactionDate: getTodayKarachiDate(),
-            };
-          }
-          return c;
-        })
-      );
+      const updatedClient: Client = {
+        ...client,
+        currentBalance: Math.max(0, client.currentBalance - target.writeOffAmount),
+        lastTransactionDate: getTodayKarachiDate(),
+      };
+
+      clientsRef.current = clientsRef.current.map(c => (c.id === target.clientId ? updatedClient : c));
+
+      setClients(prev => {
+        const next = prev.map(c => (c.id === target.clientId ? updatedClient : c));
+        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('client', 'upsert', updatedClient);
     }
 
     addAuditLog('Approved Bad Debt', 'Finance', target.badDebtNumber, `Approved bad debt write-off of Rs. ${target.writeOffAmount.toLocaleString()} for ${target.clientName}`);
@@ -1857,10 +2066,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id: generateUUID(),
       recoveryNumber,
     };
-    setBadDebtRecoveries(prev => [newRecovery, ...prev]);
+    setBadDebtRecoveries(prev => {
+      const next = [newRecovery, ...prev];
+      try { localStorage.setItem('ahmad_bad_debt_recoveries', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
 
     // Ledger entry for auditable recovery
-    const client = clients.find(c => c.id === recoveryData.clientId);
+    const client = clientsRef.current.find(c => c.id === recoveryData.clientId) || clients.find(c => c.id === recoveryData.clientId);
     if (client) {
       const ledgerEntry: LedgerEntry = {
         id: 'led-' + Date.now(),
@@ -1875,10 +2088,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notes: recoveryData.notes,
       };
 
-      setLedgerEntries(prev => ({
-        ...prev,
-        [recoveryData.clientId]: [...(prev[recoveryData.clientId] || []), ledgerEntry],
-      }));
+      setLedgerEntries(prev => {
+        const next = {
+          ...prev,
+          [recoveryData.clientId]: [...(prev[recoveryData.clientId] || []), ledgerEntry],
+        };
+        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      syncMutation('ledger', 'upsert', ledgerEntry);
     }
 
     addAuditLog('Bad Debt Recovery', 'Finance', recoveryNumber, `Recovered Rs. ${recoveryData.amount.toLocaleString()} from ${recoveryData.clientName}`);
@@ -1900,26 +2118,27 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       `Expired stock write-off: ${reason}`
     );
 
+    const updatedRecord: ExpiryRecord = {
+      ...record,
+      quantity: Math.max(0, record.quantity - quantity),
+      status: record.quantity - quantity <= 0 ? 'Written Off' : record.status,
+      writtenOffAt: new Date().toISOString(),
+      reason,
+    };
+
     // Update expiry record status
-    setExpiryRecords(prev =>
-      prev.map(e =>
-        e.id === recordId
-          ? {
-              ...e,
-              quantity: Math.max(0, e.quantity - quantity),
-              status: e.quantity - quantity <= 0 ? 'Written Off' : e.status,
-              writtenOffAt: new Date().toISOString(),
-              reason,
-            }
-          : e
-      )
-    );
+    setExpiryRecords(prev => {
+      const next = prev.map(e => (e.id === recordId ? updatedRecord : e));
+      try { localStorage.setItem('ahmad_expiry_records', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    syncMutation('expiry_record', 'upsert', updatedRecord);
 
     addAuditLog('Expired Stock Write-Off', 'Inventory', record.batch, `Wrote off ${quantity} expired units of ${record.productName} (Cost Loss: Rs. ${(quantity * record.purchaseCost).toLocaleString()})`);
   };
 
   const recordDamagedStock = (damagedData: Omit<DamagedStockRecord, 'id' | 'totalLoss'>): DamagedStockRecord => {
-    const prod = products.find(p => p.id === damagedData.productId);
+    const prod = productsRef.current.find(p => p.id === damagedData.productId) || products.find(p => p.id === damagedData.productId);
     const unitCost = damagedData.unitCost || prod?.costPrice || 0;
     const totalLoss = damagedData.quantity * unitCost;
 
@@ -1929,7 +2148,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       unitCost,
       totalLoss,
     };
-    setDamagedStockRecords(prev => [...prev, newDamaged]);
+    setDamagedStockRecords(prev => {
+      const next = [...prev, newDamaged];
+      try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
     syncMutation('damaged_stock', 'upsert', newDamaged);
 
     // Deduct stock exactly once

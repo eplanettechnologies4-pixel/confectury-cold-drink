@@ -26,6 +26,7 @@ export default function DailyClosingStockPage() {
     closeBusinessDay,
     reopenBusinessDay,
     currentUser,
+    dailyClosings,
   } = useAppState();
 
   const [selectedDate, setSelectedDate] = useState<string>(getTodayKarachiDate());
@@ -36,11 +37,11 @@ export default function DailyClosingStockPage() {
   const closingData = getDailyClosingForDate(selectedDate);
   const [editableItems, setEditableItems] = useState<DailyClosingItem[]>(closingData.items);
 
-  // Synchronize when date changes
+  // Synchronize when date or dailyClosings change
   React.useEffect(() => {
     const data = getDailyClosingForDate(selectedDate);
     setEditableItems(data.items);
-  }, [selectedDate]);
+  }, [selectedDate, dailyClosings]);
 
   const handlePhysicalCountChange = (productId: string, val: number) => {
     setEditableItems(prev =>
@@ -87,6 +88,7 @@ export default function DailyClosingStockPage() {
         )}? Normal users will no longer be able to modify historical transactions for this day.`
       )
     ) {
+      saveDailyClosingCount(selectedDate, editableItems);
       closeBusinessDay(selectedDate, currentUser?.name || 'Administrator');
       setSuccessMessage(`Day ${formatDateDDMMYYYY(selectedDate)} officially CLOSED.`);
       setTimeout(() => setSuccessMessage(''), 3000);

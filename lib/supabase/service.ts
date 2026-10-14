@@ -632,8 +632,9 @@ export const mappers = {
 
   // DAILY CLOSINGS
   dailyClosingToDb(dc: DailyClosing) {
+    const id = isValidUUID(dc.id) ? dc.id : ensureUUID('cls-' + dc.date, '90000001');
     return {
-      id: ensureUUID(dc.id, '90000001'),
+      id,
       date: sanitizeDate(dc.date) || new Date().toISOString().split('T')[0],
       status: dc.status || 'OPEN',
       closed_at: sanitizeTimestamptz(dc.closedAt),
@@ -661,7 +662,7 @@ export const mappers = {
 
   dailyClosingItemToDb(item: DailyClosingItem, closingId: string) {
     return {
-      id: ensureUUID((item as any).id, '91000001'),
+      id: generateUUID(),
       closing_id: ensureUUID(closingId, '90000001'),
       product_id: ensureUUID(item.productId, '30000001'),
       opening_stock: Number(item.openingStock) || 0,

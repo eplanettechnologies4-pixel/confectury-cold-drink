@@ -309,11 +309,19 @@ export default function NewPurchasePage() {
                       onChange={e => handleItemChange(idx, 'productId', e.target.value)}
                       className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded font-medium"
                     >
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} [{p.category}]
-                        </option>
-                      ))}
+                      {['Cold Drinks', 'Confectionery', ...Array.from(new Set(products.map(p => p.category))).filter(c => c !== 'Cold Drinks' && c !== 'Confectionery')].map(cat => {
+                        const catProds = products.filter(p => p.category === cat);
+                        if (catProds.length === 0) return null;
+                        return (
+                          <optgroup key={cat} label={`${cat === 'Cold Drinks' ? '🥤 Cold Drinks' : cat === 'Confectionery' ? '🍬 Confectionery' : '📦 ' + cat} (${catProds.length})`}>
+                            {catProds.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} [{p.category}]
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
                     </select>
                   </td>
                   <td className="py-2 px-3">

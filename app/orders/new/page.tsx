@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -11,6 +11,8 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle,
+  Filter,
+  Layers,
 } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { OrderItem, OrderStatus, PaymentMethod } from '@/types';
@@ -21,6 +23,7 @@ interface RawOrderItem {
   quantity: number;
   unitPrice: number;
   discountPercent: number;
+  categoryFilter?: string;
 }
 
 export default function NewOrderPage() {
@@ -38,6 +41,17 @@ export default function NewOrderPage() {
   const [orderNotes, setOrderNotes] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [activeCategoryTab, setActiveCategoryTab] = useState<string>('All');
+
+  // Dynamically extract all available categories across products
+  const availableCategories = useMemo(() => {
+    const cats = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+    const priority = ['Cold Drinks', 'Confectionery'];
+    return [
+      ...priority.filter(c => cats.includes(c as any)),
+      ...cats.filter(c => !priority.includes(c)),
+    ];
+  }, [products]);
 
   const [items, setItems] = useState<RawOrderItem[]>(() => {
     if (products.length === 0) return [];
@@ -47,9 +61,25 @@ export default function NewOrderPage() {
         quantity: 1,
         unitPrice: products[0]?.sellingPrice || 0,
         discountPercent: 0,
+        categoryFilter: 'All',
       },
     ];
   });
+
+  // Ensure default item is populated once products arrive
+  useEffect(() => {
+    if (items.length === 0 && products.length > 0) {
+      setItems([
+        {
+          productId: products[0].id,
+          quantity: 1,
+          unitPrice: products[0].sellingPrice,
+          discountPercent: 0,
+          categoryFilter: 'All',
+        },
+      ]);
+    }
+  }, [products, items.length]);
 
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
@@ -59,8 +89,12 @@ export default function NewOrderPage() {
     }
   }, [selectedClient]);
 
-  const handleAddItem = () => {
-    const firstAvailable = products.find(p => p.currentStock > 0) || products[0];
+  const handleAddItem = (category?: string) => {
+    const targetCat = category || (activeCategoryTab !== 'All' ? activeCategoryTab : undefined);
+    const candidateList = targetCat
+      ? products.filter(p => p.category === targetCat)
+      : products;
+    const firstAvailable = candidateList.find(p => p.currentStock > 0) || candidateList[0] || products[0];
     if (firstAvailable) {
       setItems(prev => [
         ...prev,
@@ -69,9 +103,31 @@ export default function NewOrderPage() {
           quantity: 1,
           unitPrice: firstAvailable.sellingPrice,
           discountPercent: 0,
+          categoryFilter: targetCat || 'All',
         },
       ]);
     }
+  };
+
+  const handleLineCategoryChange = (index: number, newCategory: string) => {
+    const updated = [...items];
+    const candidateProducts = newCategory === 'All'
+      ? products
+      : products.filter(p => p.category === newCategory);
+
+    const currentProd = products.find(p => p.id === updated[index].productId);
+    let chosenProd = currentProd;
+    if (newCategory !== 'All' && currentProd?.category !== newCategory) {
+      chosenProd = candidateProducts.find(p => p.currentStock > 0) || candidateProducts[0];
+    }
+
+    updated[index] = {
+      ...updated[index],
+      categoryFilter: newCategory,
+      productId: chosenProd ? chosenProd.id : updated[index].productId,
+      unitPrice: chosenProd ? chosenProd.sellingPrice : updated[index].unitPrice,
+    };
+    setItems(updated);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -86,6 +142,7 @@ export default function NewOrderPage() {
         ...updated[index],
         productId: val,
         unitPrice: prod?.sellingPrice || 0,
+        categoryFilter: updated[index].categoryFilter === 'All' ? 'All' : (prod?.category || updated[index].categoryFilter),
       };
     } else {
       updated[index] = { ...updated[index], [field]: val };
@@ -341,67 +398,187 @@ export default function NewOrderPage() {
 
       {/* Section 2: Product Line Items */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-erp p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-            2. Products & Quantities
-          </h3>
-          <button
-            type="button"
-            onClick={handleAddItem}
-            className="inline-flex items-center space-x-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Product Line</span>
-          </button>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <Layers className="h-4 w-4 text-brand-600" />
+              <span>2. Products & Quantities</span>
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Select products across all categories (Cold Drinks, Confectionery & others)
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleAddItem('Cold Drinks')}
+              className="inline-flex items-center space-x-1 px-3 py-1.5 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 rounded-lg text-xs font-semibold shadow-2xs transition"
+              title="Add a Cold Drink item directly"
+            >
+              <Plus className="h-3.5 w-3.5 text-cyan-600" />
+              <span>+ Add Cold Drink</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAddItem('Confectionery')}
+              className="inline-flex items-center space-x-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-semibold shadow-2xs transition"
+              title="Add a Confectionery item directly"
+            >
+              <Plus className="h-3.5 w-3.5 text-amber-600" />
+              <span>+ Add Confectionery</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAddItem()}
+              className="inline-flex items-center space-x-1 px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>+ Add Product Line</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Category Filter Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-500 mr-1 flex items-center">
+              <Filter className="h-3.5 w-3.5 mr-1 text-slate-400" /> Filter View:
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveCategoryTab('All')}
+              className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                activeCategoryTab === 'All'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              All Categories ({products.length})
+            </button>
+            {availableCategories.map(cat => {
+              const count = products.filter(p => p.category === cat).length;
+              const isColdDrink = cat === 'Cold Drinks';
+              const isConf = cat === 'Confectionery';
+              const isSelected = activeCategoryTab === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setActiveCategoryTab(cat)}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition flex items-center space-x-1 ${
+                    isSelected
+                      ? isColdDrink
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'bg-amber-600 text-white shadow-xs'
+                      : isColdDrink
+                      ? 'bg-white text-cyan-800 hover:bg-cyan-50 border border-cyan-200'
+                      : 'bg-white text-amber-900 hover:bg-amber-50 border border-amber-200'
+                  }`}
+                >
+                  <span>{isColdDrink ? '🥤' : isConf ? '🍬' : '📦'}</span>
+                  <span>{cat} ({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="text-[11px] text-slate-500 font-medium">
+            {activeCategoryTab === 'All'
+              ? `Showing all ${products.length} products`
+              : `Filtered to ${activeCategoryTab} (${products.filter(p => p.category === activeCategoryTab).length} products)`}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-500 border-y border-slate-200">
               <tr>
-                <th className="py-2 px-3">Product Name</th>
-                <th className="py-2 px-3">Category</th>
-                <th className="py-2 px-3 text-center">Unit</th>
-                <th className="py-2 px-3 text-right">In Stock</th>
-                <th className="py-2 px-3 text-right">Qty</th>
-                <th className="py-2 px-3 text-right">Price (PKR)</th>
-                <th className="py-2 px-3 text-right">Disc %</th>
-                <th className="py-2 px-3 text-right">Total (PKR)</th>
-                <th className="py-2 px-3 text-center">Action</th>
+                <th className="py-2.5 px-3">Product Name</th>
+                <th className="py-2.5 px-3">Category</th>
+                <th className="py-2.5 px-3 text-center">Unit</th>
+                <th className="py-2.5 px-3 text-right">In Stock</th>
+                <th className="py-2.5 px-3 text-right">Qty</th>
+                <th className="py-2.5 px-3 text-right">Price (PKR)</th>
+                <th className="py-2.5 px-3 text-right">Disc %</th>
+                <th className="py-2.5 px-3 text-right">Total (PKR)</th>
+                <th className="py-2.5 px-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {calculatedItems.map((item, idx) => {
                 const prod = products.find(p => p.id === item.productId);
                 const isOutOfStock = prod ? item.quantity > prod.currentStock : false;
+                const lineCatFilter = items[idx]?.categoryFilter || (activeCategoryTab !== 'All' ? activeCategoryTab : 'All');
+
+                // Products for this line
+                const lineProducts = lineCatFilter && lineCatFilter !== 'All'
+                  ? products.filter(p => p.category === lineCatFilter)
+                  : products;
+
+                // Ensure currently selected product is always included in options even if category filter changed
+                const displayedProducts = prod && !lineProducts.some(p => p.id === prod.id)
+                  ? [prod, ...lineProducts]
+                  : lineProducts;
 
                 return (
                   <tr key={idx} className={`hover:bg-slate-50 ${isOutOfStock ? 'bg-amber-50/60' : ''}`}>
-                    <td className="py-2 px-3">
+                    <td className="py-2.5 px-3 min-w-[280px]">
                       <select
                         value={item.productId}
                         onChange={e => handleItemChange(idx, 'productId', e.target.value)}
-                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded font-medium"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg font-medium text-xs focus:bg-white focus:border-brand-500"
                       >
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} [{p.category}] - Stock: {p.currentStock} {p.unit}
+                        {lineCatFilter === 'All' ? (
+                          availableCategories.map(cat => {
+                            const catProds = displayedProducts.filter(p => p.category === cat);
+                            if (catProds.length === 0) return null;
+                            return (
+                              <optgroup
+                                key={cat}
+                                label={`${cat === 'Cold Drinks' ? '🥤 Cold Drinks' : cat === 'Confectionery' ? '🍬 Confectionery' : '📦 ' + cat} (${catProds.length} products)`}
+                              >
+                                {catProds.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name} — Rs. {p.sellingPrice.toLocaleString()} (Stock: {p.currentStock} {p.unit})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            );
+                          })
+                        ) : (
+                          displayedProducts.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} [{p.category}] — Rs. {p.sellingPrice.toLocaleString()} (Stock: {p.currentStock} {p.unit})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <select
+                        value={lineCatFilter}
+                        onChange={e => handleLineCategoryChange(idx, e.target.value)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-bold border cursor-pointer transition ${
+                          (prod?.category || item.category) === 'Cold Drinks'
+                            ? 'bg-cyan-50 text-cyan-800 border-cyan-300 hover:bg-cyan-100'
+                            : (prod?.category || item.category) === 'Confectionery'
+                            ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                            : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                        }`}
+                        title="Click to filter products for this line"
+                      >
+                        <option value="All">All Categories</option>
+                        {availableCategories.map(cat => (
+                          <option key={cat} value={cat}>
+                            {cat === 'Cold Drinks' ? '🥤 Cold Drinks' : cat === 'Confectionery' ? '🍬 Confectionery' : cat}
                           </option>
                         ))}
                       </select>
                     </td>
-                    <td className="py-2 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        item.category === 'Confectionery'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-cyan-100 text-cyan-800'
-                      }`}>
-                        {item.category || prod?.category}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-center text-slate-600 font-medium">{item.unit}</td>
-                    <td className="py-2 px-3 text-right font-mono font-semibold">
-                      <span className={isOutOfStock ? 'text-rose-600 font-bold' : 'text-slate-700'}>
+                    <td className="py-2.5 px-3 text-center text-slate-600 font-medium">{item.unit}</td>
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold">
+                      <span className={isOutOfStock ? 'text-rose-600 font-bold' : prod?.currentStock === 0 ? 'text-amber-600 font-bold' : 'text-slate-700'}>
                         {prod?.currentStock || 0}
                       </span>
                     </td>
