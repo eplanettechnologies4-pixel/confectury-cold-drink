@@ -17,10 +17,10 @@ export function ReceiptItems({ items }: { items: OrderItem[] }) {
               <td className="py-2 pr-2">
                 <div className="font-medium">{item.productName}</div>
                 <div className="text-xs text-gray-500">
-                  {item.quantity} &times; Rs. ${item.unitPrice.toFixed(2)}
+                  {item.quantity} &times; Rs.{item.unitPrice.toFixed(2)}
                 </div>
               </td>
-              <td className="py-2 text-right font-medium">Rs. ${item.total.toFixed(2)}
+              <td className="py-2 text-right font-medium">Rs.{item.total.toFixed(2)}
               </td>
             </tr>
           ))}
