@@ -18,6 +18,11 @@ export function ReceiptItems({ items }: { items: OrderItem[] }) {
                 <div className="font-medium">{item.productName}</div>
                 <div className="text-xs text-gray-500">
                   {item.quantity} &times; Rs.{item.unitPrice.toFixed(2)}
+                  {item.returnedQuantity !== undefined && item.returnedQuantity > 0 && (
+                    <span className="block text-red-600 font-semibold">
+                      (-{item.returnedQuantity} returned, {item.quantity - item.returnedQuantity} kept)
+                    </span>
+                  )}
                 </div>
               </td>
               <td className="py-2 text-right font-medium">Rs.{item.total.toFixed(2)}

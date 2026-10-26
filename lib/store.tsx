@@ -7,6 +7,7 @@ import {
   Client,
   Product,
   Order,
+  OrderItem,
   Payment,
   LedgerEntry,
   InventoryTransaction,
@@ -19,6 +20,8 @@ import {
   Purchase,
   PurchaseReturn,
   SalesReturn,
+  ReturnSaleOptions,
+  ReturnItemOption,
   DailyClosing,
   DailyClosingItem,
   Expense,
@@ -101,7 +104,7 @@ interface AppStateContextType {
   updateOrderPaymentStatus: (orderId: string, paymentStatus: 'Paid' | 'Unpaid') => void;
   salesReturns: SalesReturn[];
   recordSalesReturn: (returnData: Omit<SalesReturn, 'id' | 'returnNumber' | 'status'>) => SalesReturn;
-  returnSale: (orderId: string, options?: { reason?: string; isResalable?: boolean; refundAmount?: number }) => SalesReturn;
+  returnSale: (orderId: string, options?: ReturnSaleOptions) => SalesReturn;
 
   // Customer Collections & Receivables Ledger
   payments: Payment[];
@@ -1505,10 +1508,37 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       syncMutation('client', 'upsert', updatedClient);
     }
 
-    // 3. Mark the original order as Returned so it is automatically removed from active Daily Sales!
+    // 3. Update the original order's item returned quantities and status
     const targetOrder = orders.find(o => o.id === newReturn.orderId || o.orderNumber === newReturn.orderNumber);
     if (targetOrder) {
-      const updatedOrder: Order = { ...targetOrder, status: 'Returned' };
+      const updatedItems = targetOrder.items.map(it => {
+        if (it.productId === newReturn.productId) {
+          return {
+            ...it,
+            returnedQuantity: (it.returnedQuantity || 0) + newReturn.quantity,
+          };
+        }
+        return it;
+      });
+      const isAllReturned = updatedItems.every(it => (it.returnedQuantity || 0) >= it.quantity);
+      let newNotes = targetOrder.notes || '';
+      if (isAllReturned) {
+        if (!newNotes.includes('[RETURNED]')) {
+          newNotes = newNotes ? `${newNotes} [RETURNED]` : '[RETURNED]';
+        }
+      } else {
+        if (!newNotes.includes('[PARTIALLY_RETURNED]')) {
+          newNotes = newNotes ? `${newNotes} [PARTIALLY_RETURNED]` : '[PARTIALLY_RETURNED]';
+        }
+      }
+
+      const updatedOrder: Order = {
+        ...targetOrder,
+        items: updatedItems,
+        status: isAllReturned ? 'Returned' : 'Partially Returned',
+        returnedAmount: (targetOrder.returnedAmount || 0) + newReturn.refundAmount,
+        notes: newNotes,
+      };
       setOrders(prev => {
         const next = prev.map(o => (o.id === targetOrder.id ? updatedOrder : o));
         try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
@@ -1517,49 +1547,113 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       syncMutation('order', 'upsert', updatedOrder);
     }
 
-    addAuditLog('Sales Return', 'Sales', returnNumber, `Recorded sales return of ${newReturn.quantity} units from ${newReturn.clientName} (Refund credit: Rs. ${newReturn.refundAmount.toLocaleString()}) - Marked order as Returned`);
+    addAuditLog('Sales Return', 'Sales', returnNumber, `Recorded sales return of ${newReturn.quantity} units from ${newReturn.clientName} (Refund credit: Rs. ${newReturn.refundAmount.toLocaleString()})`);
     syncMutation('sales_return', 'upsert', newReturn);
     return newReturn;
   };
 
-  const returnSale = (orderId: string, options?: { reason?: string; isResalable?: boolean; refundAmount?: number }): SalesReturn => {
+  const returnSale = (orderId: string, options?: ReturnSaleOptions): SalesReturn => {
     const order = orders.find(o => o.id === orderId || o.orderNumber === orderId);
     if (!order) {
       throw new Error(`Order #${orderId} not found.`);
     }
 
-    const returnNumber = `SRTN-${Math.floor(1000 + Math.random() * 1000)}`;
+    const returnNumberBase = `SRTN-${Math.floor(1000 + Math.random() * 9000)}`;
     const reason = options?.reason || 'Customer sales invoice returned';
-    const isResalable = options?.isResalable !== undefined ? options.isResalable : true;
+    const isResalableGlobal = options?.isResalable !== undefined ? options.isResalable : true;
     const returnDate = getTodayKarachiDate();
-    const refundAmount = options?.refundAmount !== undefined ? options.refundAmount : order.grandTotal;
 
-    // 1. Restock each item from the order
-    order.items.forEach(item => {
-      if (isResalable) {
+    // Determine which items and quantities to return
+    let itemsToReturn: {
+      orderItem: OrderItem;
+      quantity: number;
+      isResalable: boolean;
+      refundAmount: number;
+    }[] = [];
+
+    if (options?.items && options.items.length > 0) {
+      // User specified which items and how much to return
+      for (const opt of options.items) {
+        if (!opt.quantity || opt.quantity <= 0) continue; // 0 means kept by client!
+        const orderItem = order.items.find(i => i.productId === opt.productId);
+        if (!orderItem) continue;
+
+        const alreadyReturned = orderItem.returnedQuantity || 0;
+        const availableToReturn = Math.max(0, orderItem.quantity - alreadyReturned);
+
+        if (opt.quantity > availableToReturn) {
+          throw new Error(
+            `Cannot return ${opt.quantity} units of ${orderItem.productName}. Maximum available to return is ${availableToReturn}.`
+          );
+        }
+
+        const itemResalable = opt.isResalable !== undefined ? opt.isResalable : isResalableGlobal;
+        const disc = orderItem.discountPercent || 0;
+        const unitP = orderItem.unitPrice || 0;
+        const lineRefund = Math.round(opt.quantity * unitP * (1 - disc / 100));
+
+        itemsToReturn.push({
+          orderItem,
+          quantity: opt.quantity,
+          isResalable: itemResalable,
+          refundAmount: lineRefund,
+        });
+      }
+    } else {
+      // Full return: Return all remaining unreturned items
+      for (const orderItem of order.items) {
+        const alreadyReturned = orderItem.returnedQuantity || 0;
+        const availableToReturn = Math.max(0, orderItem.quantity - alreadyReturned);
+        if (availableToReturn <= 0) continue;
+
+        const disc = orderItem.discountPercent || 0;
+        const unitP = orderItem.unitPrice || 0;
+        const lineRefund = Math.round(availableToReturn * unitP * (1 - disc / 100));
+
+        itemsToReturn.push({
+          orderItem,
+          quantity: availableToReturn,
+          isResalable: isResalableGlobal,
+          refundAmount: lineRefund,
+        });
+      }
+    }
+
+    if (itemsToReturn.length === 0) {
+      throw new Error('Please select at least one item and quantity to return.');
+    }
+
+    // Total calculated refund based on selected items
+    const calculatedRefundTotal = itemsToReturn.reduce((sum, it) => sum + it.refundAmount, 0);
+    const totalRefundAmount = options?.refundAmount !== undefined ? options.refundAmount : calculatedRefundTotal;
+
+    // 1. Restock each returned item (or log damaged stock)
+    itemsToReturn.forEach((it, idx) => {
+      const returnNumber = itemsToReturn.length > 1 ? `${returnNumberBase}-${idx + 1}` : returnNumberBase;
+      if (it.isResalable) {
         recordStockMovement(
-          item.productId,
+          it.orderItem.productId,
           'SALES_RETURN',
-          item.quantity,
+          it.quantity,
           returnNumber,
-          `Sales Return for #${order.orderNumber}: ${item.productName}`,
+          `Sales Return for #${order.orderNumber}: ${it.orderItem.productName} (${it.quantity} ${it.orderItem.unit})`,
           undefined,
           'Khuram Chowk Warehouse',
-          item.unit
+          it.orderItem.unit
         );
       } else {
-        const prod = productsRef.current.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
+        const prod = productsRef.current.find(p => p.id === it.orderItem.productId) || products.find(p => p.id === it.orderItem.productId);
         const cost = prod?.costPrice || 0;
         const damagedRecord: DamagedStockRecord = {
           id: generateUUID(),
-          productId: item.productId,
-          productName: item.productName,
+          productId: it.orderItem.productId,
+          productName: it.orderItem.productName,
           category: prod?.category || 'Cold Drinks',
-          batch: item.batch || 'RETURN-DAMAGED',
-          quantity: item.quantity,
-          unit: item.unit,
+          batch: it.orderItem.batch || 'RETURN-DAMAGED',
+          quantity: it.quantity,
+          unit: it.orderItem.unit,
           unitCost: cost,
-          totalLoss: item.quantity * cost,
+          totalLoss: it.quantity * cost,
           date: returnDate,
           reason: `Returned damaged from #${order.orderNumber}: ${reason}`,
           recordedBy: currentUser?.name || 'Sales Staff',
@@ -1578,18 +1672,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (client) {
       const existingLedger = ledgerEntries[order.clientId] || [];
       const lastBal = existingLedger.length > 0 ? existingLedger[existingLedger.length - 1].balance : client.currentBalance;
-      const creditToReverse = order.amountRemaining > 0 ? order.amountRemaining : 0;
-      const newBal = Math.max(0, lastBal - (creditToReverse > 0 ? creditToReverse : refundAmount));
+      const creditToReverse = order.amountRemaining > 0 ? Math.min(order.amountRemaining, totalRefundAmount) : 0;
+      const effectiveReduction = creditToReverse > 0 ? creditToReverse : totalRefundAmount;
+      const newBal = Math.max(0, lastBal - effectiveReduction);
 
+      const itemsSummary = itemsToReturn.map(i => `${i.quantity}x ${i.orderItem.productName}`).join(', ');
       const ledgerEntry: LedgerEntry = {
         id: 'led-' + Date.now(),
         clientId: order.clientId,
         date: returnDate,
-        reference: returnNumber,
+        reference: returnNumberBase,
         type: 'Sales Return',
-        description: `Full sales return for Invoice #${order.orderNumber} (${order.items.length} items)`,
+        description: `Sales return for #${order.orderNumber} (${itemsSummary})`,
         debit: 0,
-        credit: creditToReverse > 0 ? creditToReverse : refundAmount,
+        credit: effectiveReduction,
         balance: newBal,
         notes: reason,
       };
@@ -1606,8 +1702,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const updatedClient: Client = {
         ...client,
-        totalPurchases: Math.max(0, client.totalPurchases - order.grandTotal),
-        currentBalance: Math.max(0, client.currentBalance - (creditToReverse > 0 ? creditToReverse : refundAmount)),
+        totalPurchases: Math.max(0, client.totalPurchases - totalRefundAmount),
+        currentBalance: Math.max(0, client.currentBalance - effectiveReduction),
         lastTransactionDate: returnDate,
       };
 
@@ -1621,47 +1717,94 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       syncMutation('client', 'upsert', updatedClient);
     }
 
-    // 3. Create master SalesReturn record
-    const firstItem = order.items[0];
-    const totalQty = order.items.reduce((sum, it) => sum + it.quantity, 0);
-    const newReturn: SalesReturn = {
-      id: generateUUID(),
-      returnNumber,
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      clientId: order.clientId,
-      clientName: order.companyName,
-      productId: firstItem?.productId || products[0]?.id || '',
-      productName: order.items.length > 1 ? `${firstItem?.productName} + ${order.items.length - 1} other item(s)` : (firstItem?.productName || 'Returned Goods'),
-      quantity: totalQty,
-      unit: firstItem?.unit || 'Carton',
-      batch: firstItem?.batch || 'RETURN',
-      returnDate,
-      refundAmount,
-      isResalable,
-      reason,
-      status: 'Completed',
-    };
+    // 3. Create SalesReturn record for each returned item
+    const createdSalesReturns: SalesReturn[] = itemsToReturn.map((it, idx) => {
+      const returnNumber = itemsToReturn.length > 1 ? `${returnNumberBase}-${idx + 1}` : returnNumberBase;
+      const sr: SalesReturn = {
+        id: generateUUID(),
+        returnNumber,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        clientId: order.clientId,
+        clientName: order.companyName,
+        productId: it.orderItem.productId,
+        productName: it.orderItem.productName,
+        quantity: it.quantity,
+        unit: it.orderItem.unit,
+        batch: it.orderItem.batch || 'RETURN',
+        returnDate,
+        refundAmount: it.refundAmount,
+        isResalable: it.isResalable,
+        reason,
+        status: 'Completed',
+      };
+      return sr;
+    });
 
     setSalesReturns(prev => {
-      const next = [newReturn, ...prev];
+      const next = [...createdSalesReturns, ...prev];
       try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(next)); } catch (_) {}
       return next;
     });
+    createdSalesReturns.forEach(sr => syncMutation('sales_return', 'upsert', sr));
 
-    // 4. Update the order status to 'Returned' and sync
-    const updatedOrder: Order = { ...order, status: 'Returned' };
+    // 4. Update order items returnedQuantity and check if all items are fully returned
+    const updatedOrderItems = order.items.map(item => {
+      const returnedEntry = itemsToReturn.find(r => r.orderItem.productId === item.productId);
+      if (returnedEntry) {
+        const newReturnedQty = (item.returnedQuantity || 0) + returnedEntry.quantity;
+        return {
+          ...item,
+          returnedQuantity: newReturnedQty,
+        };
+      }
+      return item;
+    });
+
+    const isFullyReturned = updatedOrderItems.every(i => (i.returnedQuantity || 0) >= i.quantity);
+    const newReturnedAmountTotal = (order.returnedAmount || 0) + totalRefundAmount;
+    const newRemainingPayable = Math.max(0, order.amountRemaining - totalRefundAmount);
+
+    let updatedStatus: OrderStatus = order.status;
+    let orderNotes = order.notes || '';
+
+    if (isFullyReturned) {
+      updatedStatus = 'Returned';
+      if (!orderNotes.includes('[RETURNED]')) {
+        orderNotes = orderNotes ? `${orderNotes} [RETURNED]` : '[RETURNED]';
+      }
+    } else {
+      updatedStatus = 'Partially Returned';
+      if (!orderNotes.includes('[PARTIALLY_RETURNED]')) {
+        orderNotes = orderNotes ? `${orderNotes} [PARTIALLY_RETURNED]` : '[PARTIALLY_RETURNED]';
+      }
+    }
+
+    const updatedOrder: Order = {
+      ...order,
+      items: updatedOrderItems,
+      status: updatedStatus,
+      returnedAmount: newReturnedAmountTotal,
+      amountRemaining: newRemainingPayable,
+      paymentStatus: newRemainingPayable === 0 && !isFullyReturned ? 'Paid' : order.paymentStatus,
+      notes: orderNotes,
+    };
+
     setOrders(prev => {
       const next = prev.map(o => (o.id === order.id ? updatedOrder : o));
       try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
-    addAuditLog('Sales Return', 'Sales', returnNumber, `Returned sale #${order.orderNumber} for ${order.companyName} (Refund: Rs. ${refundAmount.toLocaleString()}). Removed from Daily Sales.`);
-    syncMutation('sales_return', 'upsert', newReturn);
+    addAuditLog(
+      'Sales Return',
+      'Sales',
+      returnNumberBase,
+      `Returned ${isFullyReturned ? 'full' : 'partial'} sale #${order.orderNumber} for ${order.companyName} (${itemsToReturn.length} SKU(s), Refund: Rs. ${totalRefundAmount.toLocaleString()}).`
+    );
     syncMutation('order', 'upsert', updatedOrder);
 
-    return newReturn;
+    return createdSalesReturns[0];
   };
 
   // Customer Collections (Reduces receivable, NEVER counted as a new sale)

@@ -3,21 +3,21 @@
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Printer, FileText, Store, MapPin, Phone, Receipt, RotateCcw, ChevronDown, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Printer, FileText, Store, MapPin, Phone, Receipt, RotateCcw, ChevronDown, CheckCircle, Package } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { Modal } from '@/components/ui/Modal';
+import { ReturnModal } from '@/components/sales/ReturnModal';
 import { formatPKR, formatDateDDMMYYYY, BUSINESS_CONFIG } from '@/lib/utils';
 
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = params?.id as string;
-  const { orders, clients, returnSale, updateOrderPaymentStatus } = useAppState();
+  const { orders, clients, salesReturns, updateOrderPaymentStatus } = useAppState();
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
-  const [returnReason, setReturnReason] = useState('Customer returned goods from route');
-  const [isResalable, setIsResalable] = useState(true);
+  const [selectedProductIdForReturn, setSelectedProductIdForReturn] = useState<string | undefined>(undefined);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const order = orders.find(o => o.id === orderId || o.orderNumber === orderId);
   const client = clients.find(c => c.id === order?.clientId);
@@ -37,8 +37,23 @@ export default function OrderDetailsPage() {
     window.print();
   };
 
+  const isPartiallyReturned = order.status === 'Partially Returned' || (order.returnedAmount !== undefined && order.returnedAmount > 0);
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-xs animate-in fade-in print:hidden">
+          <div className="flex items-center space-x-2">
+            <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+            <span className="font-semibold">{toastMessage}</span>
+          </div>
+          <button onClick={() => setToastMessage(null)} className="text-emerald-700 font-bold hover:underline ml-4">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Top Action Bar */}
       <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center space-x-3">
@@ -46,7 +61,14 @@ export default function OrderDetailsPage() {
             <ArrowLeft className="h-5 w-5 text-slate-600" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Invoice #{order.orderNumber}</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center space-x-2">
+              <span>Invoice #{order.orderNumber}</span>
+              {order.status === 'Partially Returned' && (
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                  Partially Returned
+                </span>
+              )}
+            </h1>
             <p className="text-xs text-slate-500">
               Customer: {order.companyName} • {order.area} • Date: {formatDateDDMMYYYY(order.orderDate)}
             </p>
@@ -76,11 +98,15 @@ export default function OrderDetailsPage() {
           )}
           {order.status !== 'Returned' && (
             <button
-              onClick={() => setIsReturnModalOpen(true)}
+              onClick={() => {
+                setSelectedProductIdForReturn(undefined);
+                setIsReturnModalOpen(true);
+              }}
               className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg shadow-xs transition"
+              title="Return individual products or entire sale"
             >
               <RotateCcw className="h-4 w-4 text-rose-600" />
-              <span>Return Sale</span>
+              <span>Return Items / Sale</span>
             </button>
           )}
           <Link
@@ -106,6 +132,26 @@ export default function OrderDetailsPage() {
           <span>
             <strong>Sale Returned:</strong> This sale has been returned & refunded. It has been automatically removed from active Daily Sales.
           </span>
+        </div>
+      )}
+
+      {isPartiallyReturned && order.status !== 'Returned' && (
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs flex items-center justify-between print:hidden">
+          <div className="flex items-center space-x-2">
+            <RotateCcw className="h-5 w-5 text-amber-600 shrink-0" />
+            <span>
+              <strong>Partial Return Active:</strong> Some products have been returned from this sale ({formatPKR(order.returnedAmount || 0)} credit refunded). Kept products remain active on this invoice.
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedProductIdForReturn(undefined);
+              setIsReturnModalOpen(true);
+            }}
+            className="px-2.5 py-1 bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold rounded text-[11px] shrink-0 ml-3"
+          >
+            Return More Items
+          </button>
         </div>
       )}
 
@@ -211,24 +257,74 @@ export default function OrderDetailsPage() {
                 <th className="py-2.5 px-3 text-right">Unit Price</th>
                 <th className="py-2.5 px-3 text-right">Disc %</th>
                 <th className="py-2.5 px-3 text-right">Line Total</th>
+                {order.status !== 'Returned' && (
+                  <th className="py-2.5 px-3 text-right print:hidden">Action</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {order.items.map((item, idx) => (
-                <tr key={item.id || idx}>
-                  <td className="py-2.5 px-3 text-slate-400">{idx + 1}</td>
-                  <td className="py-2.5 px-3 font-semibold text-slate-900">
-                    {item.productName}
-                    {item.sku && <span className="block text-[10px] text-slate-400 font-mono">{item.sku}</span>}
-                  </td>
-                  <td className="py-2.5 px-3 text-slate-600">{item.category || 'General'}</td>
-                  <td className="py-2.5 px-3 text-slate-600">{item.unit}</td>
-                  <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">{item.quantity}</td>
-                  <td className="py-2.5 px-3 text-right text-slate-700 font-mono">{formatPKR(item.unitPrice)}</td>
-                  <td className="py-2.5 px-3 text-right text-slate-500 font-mono">{item.discountPercent}%</td>
-                  <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">{formatPKR(item.total)}</td>
-                </tr>
-              ))}
+              {order.items.map((item, idx) => {
+                const itemReturnedQty = item.returnedQuantity !== undefined && item.returnedQuantity > 0
+                  ? item.returnedQuantity
+                  : salesReturns
+                      .filter(sr => sr.orderId === order.id && sr.productId === item.productId)
+                      .reduce((sum, sr) => sum + (sr.quantity || 0), 0);
+
+                const keptQty = Math.max(0, item.quantity - itemReturnedQty);
+
+                return (
+                  <tr key={item.id || idx}>
+                    <td className="py-2.5 px-3 text-slate-400">{idx + 1}</td>
+                    <td className="py-2.5 px-3 font-semibold text-slate-900">
+                      {item.productName}
+                      {item.sku && <span className="block text-[10px] text-slate-400 font-mono">{item.sku}</span>}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600">{item.category || 'General'}</td>
+                    <td className="py-2.5 px-3 text-slate-600">{item.unit}</td>
+                    <td className="py-2.5 px-3 text-right font-mono">
+                      <span className="font-bold text-slate-900 block">{item.quantity}</span>
+                      {itemReturnedQty > 0 && (
+                        <div className="text-[10px] space-y-0.5 mt-0.5">
+                          <span className="text-purple-700 font-semibold block">Returned: {itemReturnedQty}</span>
+                          <span className="text-emerald-700 font-bold block">Kept: {keptQty}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-slate-700 font-mono">{formatPKR(item.unitPrice)}</td>
+                    <td className="py-2.5 px-3 text-right text-slate-500 font-mono">{item.discountPercent}%</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
+                      {formatPKR(item.total)}
+                      {itemReturnedQty > 0 && keptQty < item.quantity && (
+                        <span className="block text-[10px] text-emerald-700 font-semibold">
+                          Kept: {formatPKR(Math.round(keptQty * item.unitPrice * (1 - (item.discountPercent || 0) / 100)))}
+                        </span>
+                      )}
+                    </td>
+                    {order.status !== 'Returned' && (
+                      <td className="py-2.5 px-3 text-right print:hidden">
+                        {keptQty > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedProductIdForReturn(item.productId);
+                              setIsReturnModalOpen(true);
+                            }}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-semibold transition shadow-2xs"
+                            title={`Return units of ${item.productName}`}
+                          >
+                            <RotateCcw className="h-3 w-3 text-rose-600" />
+                            <span>Return</span>
+                          </button>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-800">
+                            Returned
+                          </span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -255,6 +351,14 @@ export default function OrderDetailsPage() {
                 <span className="font-mono">-{formatPKR(order.discountTotal)}</span>
               </div>
             )}
+            {order.returnedAmount !== undefined && order.returnedAmount > 0 && (
+              <div className="flex justify-between text-purple-700 font-semibold border-t border-slate-200 pt-1.5">
+                <span className="flex items-center">
+                  <RotateCcw className="h-3 w-3 mr-1" /> Returned Items Credit:
+                </span>
+                <span className="font-mono">-{formatPKR(order.returnedAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
               <span>Net Total Amount:</span>
               <span className="text-emerald-700 font-mono">{formatPKR(order.grandTotal)}</span>
@@ -271,81 +375,20 @@ export default function OrderDetailsPage() {
         </div>
       </div>
 
-      {/* Return Sale Modal */}
-      <Modal
+      {/* Return Sale & Items Modal */}
+      <ReturnModal
         isOpen={isReturnModalOpen}
-        onClose={() => setIsReturnModalOpen(false)}
-        title={`Return Sale Invoice #${order.orderNumber}`}
-        maxWidth="max-w-md"
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            try {
-              returnSale(order.id, {
-                reason: returnReason,
-                isResalable,
-              });
-              setIsReturnModalOpen(false);
-              router.push('/orders');
-            } catch (err: any) {
-              alert(err?.message || 'Error returning sale');
-            }
-          }}
-          className="space-y-4 text-xs"
-        >
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900">
-            <p className="font-bold flex items-center">
-              <RotateCcw className="h-4 w-4 mr-1.5 text-amber-700" />
-              Confirm Return for #{order.orderNumber}
-            </p>
-            <p className="text-[11px] text-amber-800 mt-1">
-              Returning this sale will restock all inventory items, reverse customer balance, and <strong>automatically remove this invoice from Daily Sales</strong>.
-            </p>
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Stock Condition *</label>
-            <select
-              value={isResalable ? 'true' : 'false'}
-              onChange={(e) => setIsResalable(e.target.value === 'true')}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
-            >
-              <option value="true">Saleable (Add back to Active Stock)</option>
-              <option value="false">Damaged / Broken (Record in Damage Loss)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Return Reason *</label>
-            <input
-              type="text"
-              value={returnReason}
-              onChange={(e) => setReturnReason(e.target.value)}
-              placeholder="e.g. Excess stock returned, route delivery rejected"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
-              required
-            />
-          </div>
-
-          <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2">
-            <button
-              type="button"
-              onClick={() => setIsReturnModalOpen(false)}
-              className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 font-semibold"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-xs flex items-center space-x-1.5"
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span>Confirm & Return to Stock</span>
-            </button>
-          </div>
-        </form>
-      </Modal>
+        onClose={() => {
+          setIsReturnModalOpen(false);
+          setSelectedProductIdForReturn(undefined);
+        }}
+        order={order}
+        preSelectedProductId={selectedProductIdForReturn}
+        onSuccess={(msg) => {
+          setToastMessage(msg);
+          setTimeout(() => setToastMessage(null), 5000);
+        }}
+      />
     </div>
   );
 }

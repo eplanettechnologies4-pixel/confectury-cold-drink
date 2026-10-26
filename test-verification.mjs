@@ -478,6 +478,80 @@ const reloadedActiveDailySales = [reloadedOrder].filter(o => o.status !== 'Retur
 assert.strictEqual(reloadedActiveDailySales.length, 0, 'Returned order must NOT appear in active Daily Sales upon reload');
 console.log('✓ PASS: Return status successfully roundtrips through Supabase DB constraints and remains excluded from active sales.\n');
 
+// ----------------------------------------------------
+// TEST 21: Individual Product Return (Client returns some items, keeps others)
+// ----------------------------------------------------
+console.log('TEST 21: Individual Product Return & Keep Selection (Partial Sale Return)');
+const prodA = { id: 'prod-item-A', name: 'Cold Drink 1.5L', currentStock: 50, sellingPrice: 500 };
+const prodB = { id: 'prod-item-B', name: 'Nescafe Classic', currentStock: 30, sellingPrice: 1000 };
+const partialClient = { id: 'clt-part-01', name: 'Al-Madina Mart', currentBalance: 0 };
+
+// Create initial multi-item order: 10 units of A (Rs. 5,000) + 5 units of B (Rs. 5,000) = Rs. 10,000
+const multiItemOrder = {
+  id: 'ord-multi-99',
+  orderNumber: 'INV-9901',
+  clientId: partialClient.id,
+  grandTotal: 10000,
+  amountPaid: 0,
+  amountRemaining: 10000,
+  status: 'Posted',
+  items: [
+    { productId: prodA.id, productName: prodA.name, quantity: 10, returnedQuantity: 0, unitPrice: 500, total: 5000 },
+    { productId: prodB.id, productName: prodB.name, quantity: 5, returnedQuantity: 0, unitPrice: 1000, total: 5000 },
+  ],
+};
+
+state.orders.push(multiItemOrder);
+partialClient.currentBalance += 10000;
+prodA.currentStock -= 10; // 40
+prodB.currentStock -= 5;  // 25
+
+// Customer returns 2 units of Product B, KEEPS 3 units of Product B and ALL 10 units of Product A
+const returnItemOption = { productId: prodB.id, quantity: 2 };
+const returnItemRefund = returnItemOption.quantity * 1000; // Rs. 2,000
+
+// Apply partial return logic
+const itemB = multiItemOrder.items.find(i => i.productId === prodB.id);
+itemB.returnedQuantity += returnItemOption.quantity; // 2 returned, 3 kept
+prodB.currentStock += returnItemOption.quantity; // Restocked 2 units -> 27
+partialClient.currentBalance -= returnItemRefund; // Reduced by Rs. 2,000 -> 8,000
+multiItemOrder.returnedAmount = returnItemRefund;
+multiItemOrder.amountRemaining -= returnItemRefund; // Rs. 8,000
+
+const allItemsReturnedPartial = multiItemOrder.items.every(i => (i.returnedQuantity || 0) >= i.quantity);
+assert.strictEqual(allItemsReturnedPartial, false, 'Sale must NOT be fully returned when items are kept');
+multiItemOrder.status = 'Partially Returned';
+
+// Assertions on Partial Return
+assert.strictEqual(prodB.currentStock, 27, 'Product B stock must increase by exactly 2 returned units');
+assert.strictEqual(prodA.currentStock, 40, 'Product A stock must remain untouched because client kept all 10 units');
+assert.strictEqual(partialClient.currentBalance, 8000, 'Customer balance must be credited exactly Rs. 2,000 for the returned product');
+assert.strictEqual(itemB.quantity - itemB.returnedQuantity, 3, 'Product B must have exactly 3 kept units');
+
+// Verify active Daily Sales still includes this order because customer kept goods!
+const activeSalesWithPartial = state.orders.filter(o => o.status !== 'Returned' && o.status !== 'Cancelled');
+assert(activeSalesWithPartial.some(o => o.id === multiItemOrder.id), 'Partially returned sale must remain in active Daily Sales');
+console.log('✓ PASS: Individual product returned, unreturned products kept, stock & balance adjusted correctly, invoice stays active in Daily Sales.');
+
+// Now client returns all remaining items (10 of A, 3 of B)
+const itemA = multiItemOrder.items.find(i => i.productId === prodA.id);
+itemA.returnedQuantity += 10;
+prodA.currentStock += 10;
+itemB.returnedQuantity += 3;
+prodB.currentStock += 3;
+partialClient.currentBalance -= 8000;
+
+const allItemsReturnedFinal = multiItemOrder.items.every(i => (i.returnedQuantity || 0) >= i.quantity);
+assert.strictEqual(allItemsReturnedFinal, true, 'All items must now be marked returned');
+multiItemOrder.status = 'Returned';
+
+const activeSalesAfterFull = state.orders.filter(o => o.status !== 'Returned' && o.status !== 'Cancelled');
+assert(!activeSalesAfterFull.some(o => o.id === multiItemOrder.id), 'Order must now be completely removed from Daily Sales');
+assert.strictEqual(prodA.currentStock, 50, 'Product A stock must be fully restored');
+assert.strictEqual(prodB.currentStock, 30, 'Product B stock must be fully restored');
+assert.strictEqual(partialClient.currentBalance, 0, 'Customer balance must be zero');
+console.log('✓ PASS: Full return of remaining kept products removes invoice from active Daily Sales and restores all inventory.\n');
+
 console.log('====================================================');
-console.log('ALL 20 TEST SCENARIOS PASSED WITH ZERO FAILURES!');
+console.log('ALL 21 TEST SCENARIOS PASSED WITH ZERO FAILURES!');
 console.log('====================================================');

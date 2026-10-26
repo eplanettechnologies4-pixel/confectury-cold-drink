@@ -58,6 +58,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'sm' })
       colorClasses = 'bg-purple-100 text-purple-800 border-purple-200 font-bold';
       break;
 
+    case 'Partially Returned':
+      colorClasses = 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
+      break;
+
     // Roles
     case 'Admin':
       colorClasses = 'bg-purple-50 text-purple-700 border-purple-200';

@@ -194,6 +194,7 @@ export interface OrderItem {
   batch?: string;
   unit: string;
   quantity: number;
+  returnedQuantity?: number; // Units returned from this line item
   availableStock: number;
   unitPrice: number;
   price?: number;
@@ -202,7 +203,21 @@ export interface OrderItem {
   total: number;
 }
 
-export type OrderStatus = 'Draft' | 'Pending' | 'Confirmed' | 'Delivered' | 'Cancelled' | 'Posted' | 'Reversed' | 'Returned';
+export type OrderStatus = 'Draft' | 'Pending' | 'Confirmed' | 'Delivered' | 'Cancelled' | 'Posted' | 'Reversed' | 'Returned' | 'Partially Returned';
+
+export interface ReturnItemOption {
+  productId: string;
+  quantity: number;
+  isResalable?: boolean;
+  reason?: string;
+}
+
+export interface ReturnSaleOptions {
+  reason?: string;
+  isResalable?: boolean;
+  refundAmount?: number;
+  items?: ReturnItemOption[];
+}
 
 export interface Order {
   id: string;
@@ -227,6 +242,7 @@ export interface Order {
   paidAmount?: number;
   amountRemaining: number; // Credit amount
   remainingAmount?: number;
+  returnedAmount?: number; // Total refund credit given on returns
   status: OrderStatus;
   paymentMethod: 'Cash' | 'Credit Account' | 'Bank Transfer' | 'Cheque' | 'Partial Cash/Credit' | 'Credit' | 'Bank';
   paymentStatus: 'Paid' | 'Partially Paid' | 'Unpaid';
