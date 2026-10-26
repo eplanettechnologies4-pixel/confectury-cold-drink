@@ -76,7 +76,7 @@ export default function ReceiptPage() {
 
       {/* Centered Receipt Area */}
       <div className="mt-8">
-        <Receipt order={order} />
+        <Receipt order={order} client={client} />
       </div>
 
       {/* Activity Logs */}

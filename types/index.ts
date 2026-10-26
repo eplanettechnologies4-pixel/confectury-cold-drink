@@ -248,6 +248,8 @@ export interface Order {
   paymentStatus: 'Paid' | 'Partially Paid' | 'Unpaid';
   notes?: string;
   createdAt?: string;
+  clientPhone?: string;
+  clientAddress?: string;
 }
 
 export type PaymentMethod = 'Cash' | 'Bank Transfer' | 'Cheque' | 'Other' | 'Bank';

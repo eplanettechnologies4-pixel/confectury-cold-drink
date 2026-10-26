@@ -210,10 +210,16 @@ export default function NewOrderPage() {
 
     setIsSubmitting(true);
 
+    const clientFormattedAddress = typeof selectedClient.address === 'object'
+      ? [selectedClient.address.address, selectedClient.address.area || selectedClient.area, selectedClient.address.city || 'Faisalabad'].filter(Boolean).join(', ')
+      : (selectedClient.address || (selectedClient.area ? `${selectedClient.area}, Faisalabad` : ''));
+
     const res = createOrder({
       clientId: selectedClient.id,
       clientName: selectedClient.name,
       companyName: selectedClient.companyName,
+      clientPhone: selectedClient.phone,
+      clientAddress: clientFormattedAddress,
       area: selectedClient.area,
       partyCategory: selectedClient.partyCategory,
       salesperson,
