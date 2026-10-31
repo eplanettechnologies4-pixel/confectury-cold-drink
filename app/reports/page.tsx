@@ -18,12 +18,14 @@ import {
   Clock,
   Layers,
   Search,
+  UserCheck,
 } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { formatPKR, formatDateDDMMYYYY, getTodayKarachiDate, BUSINESS_CONFIG } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import SalespersonDailyReportView from '@/components/reports/SalespersonDailyReportView';
 
-type ReportTab = 'sales' | 'purchases' | 'stock' | 'credit' | 'expenses' | 'pnl' | 'areas';
+type ReportTab = 'sales' | 'salesperson' | 'purchases' | 'stock' | 'credit' | 'expenses' | 'pnl' | 'areas';
 
 export default function ReportsPage() {
   const searchParams = useSearchParams();
@@ -86,7 +88,20 @@ export default function ReportsPage() {
     let csv = '';
     const nowStr = new Date().toISOString().split('T')[0];
 
-    if (activeTab === 'sales') {
+    if (activeTab === 'salesperson') {
+      csv = 'Invoice #,Date,Salesperson,Customer,Area,Payment Method,Net Total (PKR),Cash Paid (PKR),Daily Debt Created (PKR)\n' +
+        orders
+          .filter(o => o.status !== 'Cancelled' && (!startDate || isDateInRange(o.date || o.orderDate)))
+          .map(
+            o => {
+              const tot = o.total || o.grandTotal || 0;
+              const paid = o.paidAmount || o.amountPaid || 0;
+              const debt = Math.max(0, tot - paid);
+              return `"${o.orderNumber}","${(o.date || o.orderDate || '').slice(0, 10)}","${o.salesperson || ''}","${(o.clientName || '').replace(/"/g, '""')}","${o.area || 'Faisalabad'}","${o.paymentMethod}",${tot},${paid},${debt}`;
+            }
+          )
+          .join('\n');
+    } else if (activeTab === 'sales') {
       csv = 'Invoice #,Date,Customer,Area,Payment Method,Net Total (PKR),Paid (PKR),Credit (PKR)\n' +
         filteredOrders
           .map(
@@ -210,6 +225,7 @@ export default function ReportsPage() {
         <div className="flex space-x-1 p-2 min-w-max">
           {[
             { id: 'sales', label: 'Sales Reports', icon: TrendingUp },
+            { id: 'salesperson', label: 'Salesperson Daily Report', icon: UserCheck },
             { id: 'purchases', label: 'Purchase Reports', icon: Truck },
             { id: 'stock', label: 'Stock Reports', icon: Package },
             { id: 'credit', label: 'Credit Reports', icon: CreditCard },
@@ -236,7 +252,8 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Filter Toolbar - Screen Only */}
+      {/* Filter Toolbar - Screen Only (Hidden on Salesperson Daily Tab which has dedicated controls) */}
+      {activeTab !== 'salesperson' && (
       <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 no-print">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold text-slate-500">Date Range:</span>
@@ -277,6 +294,7 @@ export default function ReportsPage() {
           />
         </div>
       </div>
+      )}
 
       {/* TAB 1: SALES REPORT */}
       {activeTab === 'sales' && (
@@ -356,6 +374,11 @@ export default function ReportsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB: SALESPERSON DAILY REPORT */}
+      {activeTab === 'salesperson' && (
+        <SalespersonDailyReportView />
       )}
 
       {/* TAB 2: PURCHASE REPORT */}

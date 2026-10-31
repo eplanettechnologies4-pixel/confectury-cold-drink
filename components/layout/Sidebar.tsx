@@ -74,6 +74,7 @@ const NAV_ITEMS: NavItem[] = [
     subItems: [
       { title: 'Daily Sales', href: '/orders' },
       { title: 'New Sale Invoice', href: '/orders/new' },
+      { title: 'Salesperson Report', href: '/reports?tab=salesperson' },
       { title: 'Sales Returns', href: '/sales/returns' },
       { title: 'Party-wise Sales', href: '/sales/party' },
       { title: 'Area-wise Sales', href: '/sales/area' },
@@ -119,6 +120,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: BarChart3,
     subItems: [
       { title: 'Sales Reports', href: '/reports?tab=sales' },
+      { title: 'Salesperson Daily Report', href: '/reports?tab=salesperson' },
       { title: 'Purchase Reports', href: '/reports?tab=purchases' },
       { title: 'Stock Reports', href: '/reports?tab=stock' },
       { title: 'Credit Reports', href: '/reports?tab=credit' },
