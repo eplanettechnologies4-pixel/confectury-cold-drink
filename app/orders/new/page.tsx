@@ -29,12 +29,65 @@ interface RawOrderItem {
 export default function NewOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { clients, products, createOrder, currentUser } = useAppState();
+  const { clients, products, areas, orders, createOrder, currentUser } = useAppState();
 
   const preselectedClientId = searchParams.get('clientId') || (clients[0]?.id ?? '');
 
   const [selectedClientId, setSelectedClientId] = useState<string>(preselectedClientId);
-  const [salesperson, setSalesperson] = useState<string>(currentUser?.name || 'Admin');
+  const selectedClient = clients.find(c => c.id === selectedClientId);
+
+  // Helper to extract assigned areas for any salesperson
+  const getSalespersonAreas = (sp: string): string[] => {
+    if (!sp) return [];
+    const normalizedSp = sp.trim().toLowerCase();
+    const areaNames = new Set<string>();
+
+    // 1. From areas configured in the system
+    areas.forEach(a => {
+      if (a.assignedSalesperson?.trim().toLowerCase() === normalizedSp && a.name?.trim()) {
+        areaNames.add(a.name.trim());
+      }
+    });
+
+    // 2. From clients if area not explicitly matched in areas
+    if (areaNames.size === 0) {
+      clients.forEach(c => {
+        if (c.salesRep?.trim().toLowerCase() === normalizedSp && c.area?.trim()) {
+          areaNames.add(c.area.trim());
+        }
+      });
+    }
+
+    return Array.from(areaNames);
+  };
+
+  // Unique list of all salespersons across currentUser, areas, clients, and orders
+  const allSalespersons = useMemo(() => {
+    const set = new Set<string>();
+    if (currentUser?.name?.trim()) set.add(currentUser.name.trim());
+    areas.forEach(a => {
+      if (a.assignedSalesperson?.trim()) set.add(a.assignedSalesperson.trim());
+    });
+    clients.forEach(c => {
+      if (c.salesRep?.trim()) set.add(c.salesRep.trim());
+    });
+    orders.forEach(o => {
+      if (o.salesperson?.trim()) set.add(o.salesperson.trim());
+    });
+    if (set.size === 0) set.add('Admin');
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [areas, clients, orders, currentUser]);
+
+  const [salesperson, setSalesperson] = useState<string>(() => {
+    const initClient = clients.find(c => c.id === preselectedClientId);
+    return initClient?.salesRep || areas[0]?.assignedSalesperson || currentUser?.name || 'Admin';
+  });
+
+  const [selectedArea, setSelectedArea] = useState<string>(() => {
+    const initClient = clients.find(c => c.id === preselectedClientId);
+    return initClient?.area || areas[0]?.name || '';
+  });
+
   const [orderDate, setOrderDate] = useState<string>(getTodayKarachiDate());
   const [paymentMethod, setPaymentMethod] = useState<any>('Credit Account');
   const [amountPaidNow, setAmountPaidNow] = useState<number>(0);
@@ -81,13 +134,129 @@ export default function NewOrderPage() {
     }
   }, [products, items.length]);
 
-  const selectedClient = clients.find(c => c.id === selectedClientId);
+  const [isCustomSalesperson, setIsCustomSalesperson] = useState<boolean>(false);
 
+  // All options for salesperson dropdown including custom value
+  const salespersonOptions = useMemo(() => {
+    const list = [...allSalespersons];
+    if (salesperson && !list.includes(salesperson) && salesperson !== '__custom__') {
+      list.push(salesperson);
+    }
+    return list;
+  }, [allSalespersons, salesperson]);
+
+  // Current assigned areas for active salesperson
+  const currentSalespersonAreas = useMemo(() => {
+    return getSalespersonAreas(salesperson);
+  }, [salesperson, areas, clients]);
+
+  // Active display area
+  const displayArea =
+    selectedArea ||
+    (currentSalespersonAreas.length > 0 ? currentSalespersonAreas[0] : (selectedClient?.area || 'All Areas / General Route'));
+
+  // Ensure selection is populated once clients load
   useEffect(() => {
-    if (selectedClient?.salesRep) {
+    if (!selectedClientId && clients.length > 0) {
+      const target = preselectedClientId
+        ? clients.find(c => c.id === preselectedClientId) || clients[0]
+        : clients[0];
+      setSelectedClientId(target.id);
+      if (target.salesRep) setSalesperson(target.salesRep);
+      if (target.area) setSelectedArea(target.area);
+    }
+  }, [clients, selectedClientId, preselectedClientId]);
+
+  // Synchronize area when selected client arrives
+  useEffect(() => {
+    if (selectedClient?.area && !selectedArea) {
+      setSelectedArea(selectedClient.area);
+    }
+    if (selectedClient?.salesRep && (!salesperson || salesperson === 'Admin')) {
       setSalesperson(selectedClient.salesRep);
     }
-  }, [selectedClient]);
+  }, [selectedClient, selectedArea, salesperson]);
+
+  // Handle Salesperson selection change
+  const handleSalespersonChange = (newSp: string) => {
+    setSalesperson(newSp);
+    if (!newSp || newSp === '__custom__') return;
+
+    // 1. Get areas assigned to this salesperson
+    const spAreas = getSalespersonAreas(newSp);
+    let targetArea = '';
+
+    if (spAreas.length > 0) {
+      targetArea = spAreas[0];
+      setSelectedArea(targetArea);
+    }
+
+    // 2. Find clients belonging to this salesperson or this salesperson's assigned area(s)
+    const normalizedSp = newSp.trim().toLowerCase();
+    const matchingClients = clients.filter(c => {
+      const matchRep = c.salesRep && c.salesRep.trim().toLowerCase() === normalizedSp;
+      const matchArea = spAreas.some(a => a.toLowerCase() === (c.area || '').trim().toLowerCase());
+      return matchRep || matchArea;
+    });
+
+    // 3. Switch selected client if current client does not belong to this salesperson
+    const isCurrentClientMatching = matchingClients.some(c => c.id === selectedClientId);
+    if (!isCurrentClientMatching && matchingClients.length > 0) {
+      setSelectedClientId(matchingClients[0].id);
+    }
+  };
+
+  // Handle Customer selection change
+  const handleClientChange = (clientId: string) => {
+    setSelectedClientId(clientId);
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    if (client.area) {
+      setSelectedArea(client.area);
+    }
+
+    if (client.salesRep) {
+      setSalesperson(client.salesRep);
+      setIsCustomSalesperson(false);
+    } else if (client.area) {
+      const matchedArea = areas.find(a => a.name?.trim().toLowerCase() === client.area?.trim().toLowerCase());
+      if (matchedArea?.assignedSalesperson) {
+        setSalesperson(matchedArea.assignedSalesperson);
+        setIsCustomSalesperson(false);
+      }
+    }
+  };
+
+  // Handle Area selection change if salesperson has multiple routes
+  const handleAreaChange = (newArea: string) => {
+    setSelectedArea(newArea);
+    const matching = clients.filter(c => (c.area || '').trim().toLowerCase() === newArea.trim().toLowerCase());
+    if (matching.length > 0 && !matching.some(c => c.id === selectedClientId)) {
+      setSelectedClientId(matching[0].id);
+    }
+  };
+
+  // Split clients into route-matching customers and others for easy selection
+  const { routeMatchingClients, otherClients } = useMemo(() => {
+    const normalizedSp = (salesperson || '').trim().toLowerCase();
+    const normalizedArea = (displayArea || '').trim().toLowerCase();
+
+    const matching: typeof clients = [];
+    const others: typeof clients = [];
+
+    clients.forEach(c => {
+      const matchRep = c.salesRep && c.salesRep.trim().toLowerCase() === normalizedSp;
+      const matchArea = normalizedArea && (c.area || '').trim().toLowerCase() === normalizedArea;
+      if (matchRep || matchArea) {
+        matching.push(c);
+      } else {
+        others.push(c);
+      }
+    });
+
+    return { routeMatchingClients: matching, otherClients: others };
+  }, [clients, salesperson, displayArea]);
 
   const handleAddItem = (category?: string) => {
     const targetCat = category || (activeCategoryTab !== 'All' ? activeCategoryTab : undefined);
@@ -214,15 +383,17 @@ export default function NewOrderPage() {
       ? [selectedClient.address.address, selectedClient.address.area || selectedClient.area, selectedClient.address.city || 'Faisalabad'].filter(Boolean).join(', ')
       : (selectedClient.address || (selectedClient.area ? `${selectedClient.area}, Faisalabad` : ''));
 
+    const areaToSave = displayArea || selectedClient.area || 'Faisalabad';
+
     const res = createOrder({
       clientId: selectedClient.id,
       clientName: selectedClient.name,
       companyName: selectedClient.companyName,
       clientPhone: selectedClient.phone,
       clientAddress: clientFormattedAddress,
-      area: selectedClient.area,
+      area: areaToSave,
       partyCategory: selectedClient.partyCategory,
-      salesperson,
+      salesperson: salesperson.trim() || 'Admin',
       orderDate,
       items: calculatedItems,
       subtotal,
@@ -326,25 +497,82 @@ export default function NewOrderPage() {
             <label className="block font-semibold text-slate-700 mb-1">Select Customer / Party *</label>
             <select
               value={selectedClientId}
-              onChange={e => setSelectedClientId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium focus:bg-white"
+              onChange={e => handleClientChange(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium focus:bg-white focus:ring-2 focus:ring-brand-200"
             >
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName} ({c.name}) - {c.area} [Cat {c.partyCategory}]
-                </option>
-              ))}
+              {routeMatchingClients.length > 0 && otherClients.length > 0 ? (
+                <>
+                  <optgroup label={`Route Customers (${salesperson || 'Selected Rep'} - ${routeMatchingClients.length})`}>
+                    {routeMatchingClients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.companyName} ({c.name}) - {c.area} [Cat {c.partyCategory}]
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label={`All Other Parties (${otherClients.length})`}>
+                    {otherClients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.companyName} ({c.name}) - {c.area} [Cat {c.partyCategory}]
+                      </option>
+                    ))}
+                  </optgroup>
+                </>
+              ) : (
+                clients.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.companyName} ({c.name}) - {c.area} [Cat {c.partyCategory}]
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Salesperson / Route Rep</label>
-            <input
-              type="text"
-              value={salesperson}
-              onChange={e => setSalesperson(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="block font-semibold text-slate-700">Salesperson / Route Rep *</label>
+              {isCustomSalesperson && (
+                <button
+                  type="button"
+                  onClick={() => setIsCustomSalesperson(false)}
+                  className="text-[10px] text-brand-600 hover:underline font-medium"
+                >
+                  Choose from list
+                </button>
+              )}
+            </div>
+            {isCustomSalesperson ? (
+              <input
+                type="text"
+                value={salesperson}
+                onChange={e => handleSalespersonChange(e.target.value)}
+                placeholder="Enter custom salesperson name..."
+                className="w-full px-3 py-2 bg-white border border-brand-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-200"
+                autoFocus
+              />
+            ) : (
+              <select
+                value={salesperson}
+                onChange={e => {
+                  if (e.target.value === '__custom__') {
+                    setIsCustomSalesperson(true);
+                  } else {
+                    handleSalespersonChange(e.target.value);
+                  }
+                }}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium focus:bg-white focus:ring-2 focus:ring-brand-200"
+              >
+                {salespersonOptions.map(sp => {
+                  const spAreas = getSalespersonAreas(sp);
+                  const areaHint = spAreas.length > 0 ? ` (${spAreas[0].slice(0, 30)}${spAreas[0].length > 30 ? '...' : ''})` : '';
+                  return (
+                    <option key={sp} value={sp}>
+                      {sp}{areaHint}
+                    </option>
+                  );
+                })}
+                <option value="__custom__">+ Enter New Salesperson...</option>
+              </select>
+            )}
           </div>
 
           <div>
@@ -359,43 +587,72 @@ export default function NewOrderPage() {
         </div>
 
         {/* Live Client Information Bar */}
-        {selectedClient && (
+        {(selectedClient || salesperson) && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-3.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Customer & Owner</span>
-              <span className="font-semibold text-slate-800">{selectedClient.companyName}</span>
-              <span className="text-[11px] text-slate-500 block">{selectedClient.name} ({selectedClient.phone})</span>
+              <span className="font-semibold text-slate-800">{selectedClient?.companyName || 'No Party Selected'}</span>
+              <span className="text-[11px] text-slate-500 block">
+                {selectedClient ? `${selectedClient.name} (${selectedClient.phone})` : 'Select customer from route'}
+              </span>
             </div>
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Assigned Area</span>
-              <span className="font-bold text-slate-900">{selectedClient.area}</span>
-              <span className="text-[10px] text-slate-500 block">Faisalabad Route</span>
+              {currentSalespersonAreas.length > 1 ? (
+                <div className="space-y-1">
+                  <select
+                    value={selectedArea}
+                    onChange={e => handleAreaChange(e.target.value)}
+                    className="font-bold text-slate-900 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs w-full block mt-0.5 focus:border-brand-500 focus:outline-none"
+                  >
+                    {currentSalespersonAreas.map(a => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] text-brand-600 font-medium block">
+                    Faisalabad Route ({currentSalespersonAreas.length} assigned)
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <span className="font-bold text-slate-900 block break-words">
+                    {displayArea}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">Faisalabad Route</span>
+                </div>
+              )}
             </div>
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Party Category</span>
-              <span className={`inline-block px-2 py-0.5 mt-0.5 rounded text-[11px] font-bold ${
-                selectedClient.partyCategory === 'A'
-                  ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                  : selectedClient.partyCategory === 'B'
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'bg-slate-200 text-slate-700 border border-slate-300'
-              }`}>
-                Category {selectedClient.partyCategory} ({selectedClient.partyCategory === 'A' ? 'High' : selectedClient.partyCategory === 'B' ? 'Medium' : 'Low'})
-              </span>
+              {selectedClient ? (
+                <span className={`inline-block px-2 py-0.5 mt-0.5 rounded text-[11px] font-bold ${
+                  selectedClient.partyCategory === 'A'
+                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                    : selectedClient.partyCategory === 'B'
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                    : 'bg-slate-200 text-slate-700 border border-slate-300'
+                }`}>
+                  Category {selectedClient.partyCategory} ({selectedClient.partyCategory === 'A' ? 'High' : selectedClient.partyCategory === 'B' ? 'Medium' : 'Low'})
+                </span>
+              ) : (
+                <span className="text-slate-400 text-xs italic">N/A</span>
+              )}
             </div>
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Current Outstanding</span>
               <span className={`font-bold font-mono text-sm block ${
-                selectedClient.currentBalance > 0 ? 'text-rose-600' : 'text-emerald-600'
+                selectedClient && selectedClient.currentBalance > 0 ? 'text-rose-600' : 'text-emerald-600'
               }`}>
-                {formatPKR(selectedClient.currentBalance)}
+                {formatPKR(selectedClient?.currentBalance || 0)}
               </span>
             </div>
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Approved Credit Limit</span>
-              <span className="font-bold font-mono text-slate-800 block">{formatPKR(selectedClient.creditLimit)}</span>
+              <span className="font-bold font-mono text-slate-800 block">{formatPKR(selectedClient?.creditLimit || 0)}</span>
               <span className="text-[10px] text-slate-500 block">
-                Available: {formatPKR(Math.max(0, selectedClient.creditLimit - selectedClient.currentBalance))}
+                Available: {formatPKR(Math.max(0, (selectedClient?.creditLimit || 0) - (selectedClient?.currentBalance || 0)))}
               </span>
             </div>
           </div>
