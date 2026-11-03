@@ -89,7 +89,7 @@ export default function NewOrderPage() {
   });
 
   const [orderDate, setOrderDate] = useState<string>(getTodayKarachiDate());
-  const [paymentMethod, setPaymentMethod] = useState<any>('Credit Account');
+  const [paymentMethod, setPaymentMethod] = useState<any>('Cash');
   const [amountPaidNow, setAmountPaidNow] = useState<number>(0);
   const [orderNotes, setOrderNotes] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -905,8 +905,8 @@ export default function NewOrderPage() {
                 onChange={e => setPaymentMethod(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-medium"
               >
-                <option value="Credit Account">Credit Account (Add to Customer Receivable)</option>
                 <option value="Cash">Cash Sale (Full Cash on Delivery)</option>
+                <option value="Credit Account">Credit Account (Add to Customer Receivable)</option>
                 <option value="Partial Cash/Credit">Partial Cash & Partial Credit</option>
                 <option value="Bank Transfer">Direct Bank Transfer</option>
                 <option value="Cheque">Post-Dated Cheque</option>
