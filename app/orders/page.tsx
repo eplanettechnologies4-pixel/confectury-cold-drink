@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ShoppingCart, Plus, Download, Eye, RotateCcw, AlertTriangle, CheckCircle, Package, ChevronDown, Search } from 'lucide-react';
+import { ShoppingCart, Plus, Download, Eye, RotateCcw, AlertTriangle, CheckCircle, Package, ChevronDown, Search, Receipt } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -152,10 +152,20 @@ export default function OrdersPage() {
         <div className="flex items-center justify-end space-x-1.5">
           <Link
             href={`/orders/${o.id}`}
+            title="View Invoice Details"
             className="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded transition"
           >
             <Eye className="h-3.5 w-3.5" />
             <span>View</span>
+          </Link>
+
+          <Link
+            href={`/orders/${o.id}/receipt`}
+            title="Print Thermal Receipt"
+            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold rounded transition"
+          >
+            <Receipt className="h-3.5 w-3.5 text-amber-600" />
+            <span>Receipt</span>
           </Link>
 
           {o.status !== 'Returned' && (

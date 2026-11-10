@@ -443,7 +443,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...areaData,
       code,
       id: generateUUID(),
-      createdAt: getTodayKarachiDate(),
+      createdAt: new Date().toISOString(),
     };
     setAreas(prev => [...prev, newArea]);
     syncMutation('area', 'upsert', newArea);
@@ -488,7 +488,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       totalPaid: 0,
       currentBalance: initialBal,
       lastTransactionDate: getTodayKarachiDate(),
-      createdAt: getTodayKarachiDate(),
+      createdAt: new Date().toISOString(),
     };
 
     setClients(prev => [newClient, ...prev]);
@@ -661,7 +661,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const tx: InventoryTransaction = {
       id: generateUUID(),
       date: getTodayKarachiDate(),
-      reference: `ADJ-${Date.now().toString().slice(-4)}`,
+      reference: generateNextSequenceNumber('ADJ-', inventoryTransactions.map(t => t.reference), 1001),
       productId,
       productName: product.name,
       sku: product.sku,
@@ -739,7 +739,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id: generateUUID(),
       supplierId,
       currentPayable: supplierData.openingPayable || 0,
-      createdAt: getTodayKarachiDate(),
+      createdAt: new Date().toISOString(),
     };
     setSuppliers(prev => [...prev, newSupplier]);
     addAuditLog('Added Supplier', 'Purchases', supplierId, `Added supplier ${newSupplier.name}`);
@@ -802,7 +802,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id: generateUUID(),
       items: purchaseData.items.map(it => ({ ...it, id: generateUUID() })),
       invoiceNumber,
-      createdAt: getTodayKarachiDate(),
+      createdAt: new Date().toISOString(),
     };
 
     setPurchases(prev => [newPurchase, ...prev]);
@@ -1065,7 +1065,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       items: orderData.items.map(it => ({ ...it, id: generateUUID() })),
       orderNumber,
       status: orderData.status || 'Posted',
-      createdAt: getTodayKarachiDate(),
+      createdAt: new Date().toISOString(),
     };
 
     // 4. Save directly to Supabase first to ensure persistence
@@ -1309,7 +1309,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const newBal = Math.max(0, lastBal - newReturn.refundAmount);
 
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now(),
+        id: generateUUID(),
         clientId: newReturn.clientId,
         date: newReturn.returnDate,
         reference: returnNumber,
@@ -1514,7 +1514,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const itemsSummary = itemsToReturn.map(i => `${i.quantity}x ${i.orderItem.productName}`).join(', ');
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now(),
+        id: generateUUID(),
         clientId: order.clientId,
         date: returnDate,
         reference: returnNumberBase,
@@ -1669,7 +1669,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const newBal = lastBal - paymentData.amount;
 
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now(),
+        id: generateUUID(),
         clientId: paymentData.clientId,
         date: paymentData.paymentDate,
         reference: paymentNumber,
@@ -1985,7 +1985,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const newBal = Math.max(0, lastBal - target.writeOffAmount);
 
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now(),
+        id: generateUUID(),
         clientId: target.clientId,
         date: getTodayKarachiDate(),
         reference: target.badDebtNumber,
@@ -2039,7 +2039,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const client = clientsRef.current.find(c => c.id === recoveryData.clientId) || clients.find(c => c.id === recoveryData.clientId);
     if (client) {
       const ledgerEntry: LedgerEntry = {
-        id: 'led-' + Date.now(),
+        id: generateUUID(),
         clientId: recoveryData.clientId,
         date: recoveryData.date,
         reference: recoveryNumber,

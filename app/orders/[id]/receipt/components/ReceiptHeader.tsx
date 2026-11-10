@@ -21,10 +21,7 @@ export function ReceiptHeader({
       
       <div className="mt-4 text-left text-xs text-gray-700 font-mono space-y-1 bg-gray-50 p-2.5 rounded border border-gray-200">
         <p className="flex justify-between">
-          <span className="font-sans text-gray-500">Receipt #:</span> <span className="font-bold text-gray-900">{receiptNumber}</span>
-        </p>
-        <p className="flex justify-between">
-          <span className="font-sans text-gray-500">Invoice Ref #:</span> <span className="font-bold text-gray-900">{orderNumber}</span>
+          <span className="font-sans text-gray-500">Invoice / Receipt #:</span> <span className="font-bold text-gray-900">{orderNumber}</span>
         </p>
         <p className="flex justify-between">
           <span className="font-sans text-gray-500">Date:</span> <span>{date}</span>

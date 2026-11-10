@@ -14,7 +14,7 @@ import { ReceiptLog } from '@/types';
 export default function ReceiptPage() {
   const params = useParams();
   const orderId = params.id as string;
-  const { orders, clients } = useAppState();
+  const { orders, clients, supabaseSyncStatus } = useAppState();
 
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [receiptLogs, setReceiptLogs] = useState<ReceiptLog[]>([]);
@@ -23,6 +23,13 @@ export default function ReceiptPage() {
   const client = clients.find(c => c.id === order?.clientId);
 
   if (!order) {
+    if (supabaseSyncStatus === 'syncing') {
+      return (
+        <div className="p-12 text-center text-slate-500">
+          <p className="text-base font-semibold animate-pulse">Loading receipt from Supabase...</p>
+        </div>
+      );
+    }
     return (
       <div className="p-8 text-center text-slate-500">
         Order record not found.
@@ -35,7 +42,7 @@ export default function ReceiptPage() {
     const newLog: ReceiptLog = {
       id: `log-${Date.now()}-${receiptLogs.length}`,
       orderId: order.id,
-      receiptNumber: `EP-${order.id.substring(0, 6).toUpperCase()}`,
+      receiptNumber: order.orderNumber,
       action: 'EMAILED',
       email,
       sentAt: new Date().toISOString(),

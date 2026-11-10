@@ -10,14 +10,9 @@ import { ReceiptTotals } from './ReceiptTotals';
 import { ReceiptPayment } from './ReceiptPayment';
 import { ReceiptFooter } from './ReceiptFooter';
 
-// A unique receipt number generator based on order date/id (mocked for now, normally stored in DB)
-const generateReceiptNumber = (orderId: string) => {
-  return `EP-${orderId.substring(0, 6).toUpperCase()}`;
-};
-
 export function Receipt({ order, client: propClient }: { order: Order; client?: Client | null }) {
   const { clients } = useAppState();
-  const receiptNumber = generateReceiptNumber(order.id);
+  const receiptNumber = order.orderNumber;
 
   // Look up client if not passed directly
   const client = propClient !== undefined ? propClient : (
