@@ -13,7 +13,7 @@ export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = params?.id as string;
-  const { orders, clients, salesReturns, updateOrderPaymentStatus } = useAppState();
+  const { orders, clients, salesReturns, updateOrderPaymentStatus, supabaseSyncStatus } = useAppState();
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [selectedProductIdForReturn, setSelectedProductIdForReturn] = useState<string | undefined>(undefined);
@@ -23,9 +23,16 @@ export default function OrderDetailsPage() {
   const client = clients.find(c => c.id === order?.clientId);
 
   if (!order) {
+    if (supabaseSyncStatus === 'syncing') {
+      return (
+        <div className="p-12 text-center text-slate-500">
+          <p className="text-base font-semibold animate-pulse">Loading invoice details from Supabase...</p>
+        </div>
+      );
+    }
     return (
       <div className="p-12 text-center text-slate-500">
-        <p className="text-base font-semibold">Sale invoice not found</p>
+        <p className="text-base font-semibold">Sale invoice &ldquo;{orderId}&rdquo; not found</p>
         <Link href="/orders" className="text-xs text-brand-600 hover:underline mt-2 inline-block">
           Back to sales list
         </Link>

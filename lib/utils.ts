@@ -118,3 +118,49 @@ export function convertUnitQuantity(
 
   return baseQuantity;
 }
+
+/**
+ * Generates the next sequential unique document number.
+ * Finds the maximum existing integer matching ^prefix(\d+) and returns prefix + (max + 1).
+ * Never generates a duplicate or resets to an existing number.
+ */
+export function generateNextSequenceNumber(
+  prefix: string,
+  existingStrings: (string | undefined | null)[],
+  minStart: number = 1001,
+  padDigits: number = 4
+): string {
+  let maxNum = minStart - 1;
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`^${escapedPrefix}(\\d+)`, 'i');
+
+  const existingSet = new Set<string>();
+
+  for (const str of existingStrings) {
+    if (!str) continue;
+    const trimmed = str.trim();
+    existingSet.add(trimmed.toUpperCase());
+    const match = trimmed.match(regex);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
+  }
+
+  let candidateNum = maxNum + 1;
+  let candidate = '';
+  while (true) {
+    const numStr = candidateNum.toString().length >= padDigits
+      ? candidateNum.toString()
+      : candidateNum.toString().padStart(padDigits, '0');
+    candidate = `${prefix}${numStr}`;
+    if (!existingSet.has(candidate.toUpperCase())) {
+      break;
+    }
+    candidateNum++;
+  }
+
+  return candidate;
+}

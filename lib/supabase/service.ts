@@ -417,7 +417,7 @@ export const mappers = {
       grand_total: Number(o.grandTotal) || 0,
       amount_paid: Number(o.amountPaid) || 0,
       amount_remaining: Number(o.amountRemaining) || 0,
-      status: isReturned ? 'Cancelled' : (o.status || 'Posted'),
+      status: isReturned ? 'Returned' : (o.status || 'Posted'),
       payment_method: o.paymentMethod || 'Cash',
       payment_status: o.paymentStatus || 'Unpaid',
       notes,

@@ -8,6 +8,7 @@ import { DataTable, Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
 import { Client } from '@/types';
+import { generateNextSequenceNumber } from '@/lib/utils';
 
 export default function AccountsPage() {
   const { clients, payments, recordPayment } = useAppState();
@@ -91,7 +92,7 @@ export default function AccountsPage() {
       paymentDate: new Date().toISOString().split('T')[0],
       amount,
       paymentMethod,
-      referenceNumber: refNo || `WT-${Math.floor(10000 + Math.random() * 90000)}`,
+      referenceNumber: refNo || generateNextSequenceNumber('WT-', payments.map(p => p.referenceNumber), 10001, 5),
       recordedBy: 'Michael Chang',
     });
 

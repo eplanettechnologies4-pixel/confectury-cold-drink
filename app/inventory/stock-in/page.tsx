@@ -5,13 +5,16 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2, CheckCircle2, PackageCheck, Building, FileText, Calendar } from 'lucide-react';
 import { useAppState } from '@/lib/store';
+import { generateNextSequenceNumber } from '@/lib/utils';
 
 export default function StockInPage() {
   const router = useRouter();
-  const { products, recordStockMovement } = useAppState();
+  const { products, purchases, recordStockMovement } = useAppState();
 
   const [supplier, setSupplier] = useState('Beverage Bottlers Corp');
-  const [invoiceNumber, setInvoiceNumber] = useState(`PO-${Math.floor(90000 + Math.random() * 9000)}`);
+  const [invoiceNumber, setInvoiceNumber] = useState(() =>
+    generateNextSequenceNumber('PO-', purchases.map(p => p.invoiceNumber), 90001, 5)
+  );
   const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split('T')[0]);
   const [warehouse, setWarehouse] = useState('Main Central Hub - Bay 4');
   const [notes, setNotes] = useState('');

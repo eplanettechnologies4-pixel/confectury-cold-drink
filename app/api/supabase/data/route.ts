@@ -350,12 +350,13 @@ export async function POST(req: Request) {
 
         case 'purchase': {
           const purchaseRow = mappers.purchaseToDb(data);
-          const { error: pErr } = await supabase.from('purchases').upsert(purchaseRow);
+          const { error: pErr } = await supabase.from('purchases').upsert(purchaseRow, { onConflict: 'id' });
           if (pErr) throw pErr;
 
           if (Array.isArray(data.items) && data.items.length > 0) {
+            await supabase.from('purchase_items').delete().eq('purchase_id', purchaseRow.id);
             const itemRows = data.items.map((it: any) => mappers.purchaseItemToDb(it, purchaseRow.id));
-            const { error: itemsErr } = await supabase.from('purchase_items').upsert(itemRows);
+            const { error: itemsErr } = await supabase.from('purchase_items').insert(itemRows);
             if (itemsErr) throw itemsErr;
           }
           return NextResponse.json({ success: true, id: purchaseRow.id });
@@ -363,12 +364,13 @@ export async function POST(req: Request) {
 
         case 'order': {
           const orderRow = mappers.orderToDb(data);
-          const { error: oErr } = await supabase.from('orders').upsert(orderRow);
+          const { error: oErr } = await supabase.from('orders').upsert(orderRow, { onConflict: 'id' });
           if (oErr) throw oErr;
 
           if (Array.isArray(data.items) && data.items.length > 0) {
+            await supabase.from('order_items').delete().eq('order_id', orderRow.id);
             const itemRows = data.items.map((it: any) => mappers.orderItemToDb(it, orderRow.id));
-            const { error: itemsErr } = await supabase.from('order_items').upsert(itemRows);
+            const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
             if (itemsErr) throw itemsErr;
           }
           return NextResponse.json({ success: true, id: orderRow.id });
@@ -492,7 +494,7 @@ export async function POST(req: Request) {
             const { data: ord } = await supabase.from('orders').select('notes').eq('id', row.order_id).maybeSingle();
             const curNotes = ord?.notes || '';
             const newNotes = (curNotes + (curNotes.includes('[RETURNED]') ? '' : ' [RETURNED]')).trim();
-            await supabase.from('orders').update({ status: 'Cancelled', notes: newNotes }).eq('id', row.order_id);
+            await supabase.from('orders').update({ status: 'Returned', notes: newNotes }).eq('id', row.order_id);
           }
           return NextResponse.json({ success: true, id: row.id });
         }

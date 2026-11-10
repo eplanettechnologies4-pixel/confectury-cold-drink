@@ -48,7 +48,7 @@ import {
   INITIAL_DAMAGED_STOCK,
   INITIAL_EXPIRY_RECORDS,
 } from './mock-data';
-import { formatDateDDMMYYYY, getTodayKarachiDate, convertUnitQuantity } from './utils';
+import { formatDateDDMMYYYY, getTodayKarachiDate, convertUnitQuantity, generateNextSequenceNumber } from './utils';
 import { generateUUID, ensureUUID } from './supabase/service';
 
 interface AppStateContextType {
@@ -99,7 +99,7 @@ interface AppStateContextType {
 
   // Sales Orders & Sales Returns
   orders: Order[];
-  createOrder: (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>) => { success: boolean; order?: Order; error?: string };
+  createOrder: (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>) => Promise<{ success: boolean; order?: Order; error?: string }>;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   updateOrderPaymentStatus: (orderId: string, paymentStatus: 'Paid' | 'Unpaid') => void;
   salesReturns: SalesReturn[];
@@ -391,20 +391,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Supabase Synchronization State & Helpers
   const [supabaseSyncStatus, setSupabaseSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
 
-  const syncMutation = async (entity: string, action: 'upsert' | 'delete', data?: any, id?: string) => {
-    if (typeof window === 'undefined') return;
+  const syncMutation = async (entity: string, action: 'upsert' | 'delete', data?: any, id?: string): Promise<{ success: boolean; error?: string }> => {
+    if (typeof window === 'undefined') return { success: false, error: 'SSR' };
     try {
       const res = await fetch('/api/supabase/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity, action, data, id }),
       });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        console.warn(`[Supabase Sync] ${entity} mutation server response:`, errJson);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        console.warn(`[Supabase Sync] ${entity} mutation server response:`, json);
+        return { success: false, error: json.message || `Failed to sync ${entity} (${res.status})` };
       }
-    } catch (err) {
+      return { success: true };
+    } catch (err: any) {
       console.warn(`[Supabase Sync] ${entity} mutation network error:`, err);
+      return { success: false, error: err?.message || 'Network error syncing with database' };
     }
   };
 
@@ -416,59 +419,129 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (json.success && json.configured) {
         if (json.hasData && json.data) {
           if (Array.isArray(json.data.areas)) {
-            setAreas(json.data.areas);
-            try { localStorage.setItem('ahmad_areas', JSON.stringify(json.data.areas)); } catch (_) {}
+            setAreas(prev => {
+              const sbMap = new Map((json.data.areas as Area[]).map(a => [a.id, a]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              const merged = [...unsynced, ...json.data.areas];
+              try { localStorage.setItem('ahmad_areas', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.clients) && json.data.clients.length > 0) {
-            setClients(json.data.clients);
-            clientsRef.current = json.data.clients;
-            try { localStorage.setItem('ahmad_clients', JSON.stringify(json.data.clients)); } catch (_) {}
+            setClients(prev => {
+              const sbMap = new Map((json.data.clients as Client[]).map(c => [c.id, c]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('client', 'upsert', u));
+              const merged = [...unsynced, ...json.data.clients];
+              clientsRef.current = merged;
+              try { localStorage.setItem('ahmad_clients', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.products) && json.data.products.length > 0) {
-            setProducts(json.data.products);
-            productsRef.current = json.data.products;
-            try { localStorage.setItem('ahmad_products', JSON.stringify(json.data.products)); } catch (_) {}
+            setProducts(prev => {
+              const sbMap = new Map((json.data.products as Product[]).map(p => [p.id, p]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('product', 'upsert', u));
+              const merged = [...unsynced, ...json.data.products];
+              productsRef.current = merged;
+              try { localStorage.setItem('ahmad_products', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.suppliers) && json.data.suppliers.length > 0) {
-            setSuppliers(json.data.suppliers);
-            suppliersRef.current = json.data.suppliers;
-            try { localStorage.setItem('ahmad_suppliers', JSON.stringify(json.data.suppliers)); } catch (_) {}
+            setSuppliers(prev => {
+              const sbMap = new Map((json.data.suppliers as Supplier[]).map(s => [s.id, s]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('supplier', 'upsert', u));
+              const merged = [...unsynced, ...json.data.suppliers];
+              suppliersRef.current = merged;
+              try { localStorage.setItem('ahmad_suppliers', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.supplierPayments)) {
-            setSupplierPayments(json.data.supplierPayments);
-            try { localStorage.setItem('ahmad_supplier_payments', JSON.stringify(json.data.supplierPayments)); } catch (_) {}
+            setSupplierPayments(prev => {
+              const sbMap = new Map((json.data.supplierPayments as SupplierPayment[]).map(p => [p.id, p]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('supplier_payment', 'upsert', u));
+              const merged = [...unsynced, ...json.data.supplierPayments];
+              try { localStorage.setItem('ahmad_supplier_payments', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.purchases)) {
-            setPurchases(json.data.purchases);
-            try { localStorage.setItem('ahmad_purchases', JSON.stringify(json.data.purchases)); } catch (_) {}
+            setPurchases(prev => {
+              const sbMap = new Map((json.data.purchases as Purchase[]).map(p => [p.id, p]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('purchase', 'upsert', u));
+              const merged = [...unsynced, ...json.data.purchases];
+              try { localStorage.setItem('ahmad_purchases', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.purchaseReturns)) {
-            setPurchaseReturns(json.data.purchaseReturns);
-            try { localStorage.setItem('ahmad_purchase_returns', JSON.stringify(json.data.purchaseReturns)); } catch (_) {}
+            setPurchaseReturns(prev => {
+              const sbMap = new Map((json.data.purchaseReturns as PurchaseReturn[]).map(p => [p.id, p]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              const merged = [...unsynced, ...json.data.purchaseReturns];
+              try { localStorage.setItem('ahmad_purchase_returns', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.orders)) {
-            setOrders(json.data.orders);
-            try { localStorage.setItem('ahmad_orders', JSON.stringify(json.data.orders)); } catch (_) {}
+            setOrders(prev => {
+              const sbOrderMap = new Map((json.data.orders as Order[]).map(o => [o.id, o]));
+              const unsynced = prev.filter(p => !sbOrderMap.has(p.id));
+              if (unsynced.length > 0) {
+                unsynced.forEach(u => syncMutation('order', 'upsert', u));
+              }
+              const merged = [...unsynced, ...json.data.orders];
+              try { localStorage.setItem('ahmad_orders', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.salesReturns)) {
-            setSalesReturns(json.data.salesReturns);
-            try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(json.data.salesReturns)); } catch (_) {}
+            setSalesReturns(prev => {
+              const sbMap = new Map((json.data.salesReturns as SalesReturn[]).map(s => [s.id, s]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              const merged = [...unsynced, ...json.data.salesReturns];
+              try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.payments)) {
-            setPayments(json.data.payments);
-            try { localStorage.setItem('ahmad_payments', JSON.stringify(json.data.payments)); } catch (_) {}
+            setPayments(prev => {
+              const sbMap = new Map((json.data.payments as Payment[]).map(p => [p.id, p]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('payment', 'upsert', u));
+              const merged = [...unsynced, ...json.data.payments];
+              try { localStorage.setItem('ahmad_payments', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (json.data.ledgerEntries && typeof json.data.ledgerEntries === 'object') {
             setLedgerEntries(json.data.ledgerEntries);
             try { localStorage.setItem('ahmad_ledgers', JSON.stringify(json.data.ledgerEntries)); } catch (_) {}
           }
           if (Array.isArray(json.data.inventoryTransactions)) {
-            setInventoryTransactions(json.data.inventoryTransactions);
-            try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(json.data.inventoryTransactions)); } catch (_) {}
+            setInventoryTransactions(prev => {
+              const sbMap = new Map((json.data.inventoryTransactions as InventoryTransaction[]).map(t => [t.id, t]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              const merged = [...unsynced, ...json.data.inventoryTransactions];
+              try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.expenses)) {
-            setExpenses(json.data.expenses);
-            try { localStorage.setItem('ahmad_expenses', JSON.stringify(json.data.expenses)); } catch (_) {}
+            setExpenses(prev => {
+              const sbMap = new Map((json.data.expenses as Expense[]).map(e => [e.id, e]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('expense', 'upsert', u));
+              const merged = [...unsynced, ...json.data.expenses];
+              try { localStorage.setItem('ahmad_expenses', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.dailyClosings) && json.data.dailyClosings.length > 0) {
             setDailyClosings(json.data.dailyClosings);
@@ -484,12 +557,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           }
           if (Array.isArray(json.data.badDebts)) {
-            setBadDebts(json.data.badDebts);
-            try { localStorage.setItem('ahmad_bad_debts', JSON.stringify(json.data.badDebts)); } catch (_) {}
+            setBadDebts(prev => {
+              const sbMap = new Map((json.data.badDebts as BadDebt[]).map(b => [b.id, b]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              const merged = [...unsynced, ...json.data.badDebts];
+              try { localStorage.setItem('ahmad_bad_debts', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.badDebtRecoveries)) {
-            setBadDebtRecoveries(json.data.badDebtRecoveries);
-            try { localStorage.setItem('ahmad_bad_debt_recoveries', JSON.stringify(json.data.badDebtRecoveries)); } catch (_) {}
+            setBadDebtRecoveries(prev => {
+              const sbMap = new Map((json.data.badDebtRecoveries as BadDebtRecovery[]).map(r => [r.id, r]));
+              const unsynced = prev.filter(p => !sbMap.has(p.id));
+              const merged = [...unsynced, ...json.data.badDebtRecoveries];
+              try { localStorage.setItem('ahmad_bad_debt_recoveries', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
           }
           if (Array.isArray(json.data.damagedStockRecords)) {
             setDamagedStockRecords(json.data.damagedStockRecords);
@@ -585,8 +668,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Areas
   const addArea = (areaData: Omit<Area, 'id' | 'createdAt'>): Area => {
+    const code = areaData.code || generateNextSequenceNumber('ARA-', areas.map(a => a.code), 10, 2);
     const newArea: Area = {
       ...areaData,
+      code,
       id: generateUUID(),
       createdAt: getTodayKarachiDate(),
     };
@@ -623,8 +708,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       'id' | 'clientId' | 'totalPurchases' | 'totalPaid' | 'currentBalance' | 'lastTransactionDate' | 'createdAt'
     >
   ): Client => {
-    const count = clients.length + 1001;
-    const clientId = `CLT-${count}`;
+    const clientId = generateNextSequenceNumber('CLT-', clients.map(c => c.clientId), 1001);
     const initialBal = clientData.openingBalance || 0;
     const newClient: Client = {
       ...clientData,
@@ -682,6 +766,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Product operations
   const addProduct = (productData: Omit<Product, 'id' | 'reservedStock' | 'availableStock' | 'status'>): Product => {
+    const sku = productData.sku || generateNextSequenceNumber('SKU-', products.map(p => p.sku), 1001);
     const currentStock = productData.currentStock || 0;
     const minStock = productData.minStockLevel || 20;
     let status: Product['status'] = 'In Stock';
@@ -690,6 +775,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const newProduct: Product = {
       ...productData,
+      sku,
       id: generateUUID(),
       currentStock,
       reservedStock: 0,
@@ -889,7 +975,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Suppliers & Supplier Payments
   const addSupplier = (supplierData: Omit<Supplier, 'id' | 'supplierId' | 'currentPayable' | 'createdAt'>): Supplier => {
-    const supplierId = `SUP-${suppliers.length + 101}`;
+    const supplierId = generateNextSequenceNumber('SUP-', suppliers.map(s => s.supplierId), 101);
     const newSupplier: Supplier = {
       ...supplierData,
       id: generateUUID(),
@@ -922,7 +1008,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const recordSupplierPayment = (paymentData: Omit<SupplierPayment, 'id' | 'paymentNumber'>): SupplierPayment => {
-    const paymentNumber = `SPAY-${Date.now().toString().slice(-4)}`;
+    const paymentNumber = generateNextSequenceNumber('SPAY-', supplierPayments.map(p => p.paymentNumber), 1001);
     const newPayment: SupplierPayment = {
       ...paymentData,
       id: generateUUID(),
@@ -954,7 +1040,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Purchases
   const createPurchase = (purchaseData: Omit<Purchase, 'id' | 'invoiceNumber' | 'createdAt'>): Purchase => {
-    const invoiceNumber = `PINV-${Math.floor(5000 + Math.random() * 1000)}`;
+    const invoiceNumber = generateNextSequenceNumber('PINV-', purchases.map(p => p.invoiceNumber), 5001);
     const newPurchase: Purchase = {
       ...purchaseData,
       id: generateUUID(),
@@ -1056,7 +1142,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const recordPurchaseReturn = (returnData: Omit<PurchaseReturn, 'id' | 'returnNumber' | 'status'>): PurchaseReturn => {
-    const returnNumber = `PRTN-${Math.floor(1000 + Math.random() * 1000)}`;
+    const returnNumber = generateNextSequenceNumber('PRTN-', purchaseReturns.map(r => r.returnNumber), 1001);
     const newReturn: PurchaseReturn = {
       ...returnData,
       id: generateUUID(),
@@ -1117,7 +1203,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       throw new Error(`Purchase #${purchaseId} not found.`);
     }
 
-    const returnNumber = `PRTN-${Math.floor(1000 + Math.random() * 1000)}`;
+    const returnNumber = generateNextSequenceNumber('PRTN-', purchaseReturns.map(r => r.returnNumber), 1001);
     const reason = options?.reason || 'Consignment returned to supplier';
     const returnDate = getTodayKarachiDate();
 
@@ -1195,7 +1281,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Sales Orders (Party-wise daily sales)
-  const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>): { success: boolean; order?: Order; error?: string } => {
+  const createOrder = async (
+    orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>
+  ): Promise<{ success: boolean; order?: Order; error?: string }> => {
     // 1. Check if the business day is closed
     if (isDateClosed(orderData.orderDate)) {
       return {
@@ -1219,23 +1307,35 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    const orderNumber = `INV-${Math.floor(8800 + Math.random() * 1000)}`;
+    // 3. Generate unique sequential invoice number
+    const orderNumber = generateNextSequenceNumber('INV-', orders.map(o => o.orderNumber), 9001);
     const newOrder: Order = {
       ...orderData,
       id: generateUUID(),
       items: orderData.items.map(it => ({ ...it, id: generateUUID() })),
       orderNumber,
-      status: 'Posted',
+      status: orderData.status || 'Posted',
       createdAt: getTodayKarachiDate(),
     };
 
+    // 4. Save directly to Supabase first to ensure persistence
+    const syncRes = await syncMutation('order', 'upsert', newOrder);
+    if (!syncRes.success) {
+      console.error('[createOrder] Supabase sync error:', syncRes.error);
+      return {
+        success: false,
+        error: `Database sync error: Could not save invoice to Supabase (${syncRes.error}). No changes were made.`,
+      };
+    }
+
+    // 5. Update local state & localStorage now that Supabase confirmed
     setOrders(prev => {
-      const next = [newOrder, ...prev];
+      const next = [newOrder, ...prev.filter(o => o.id !== newOrder.id && o.orderNumber !== newOrder.orderNumber)];
       try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
-    // 3. Deduct stock for all ordered products
+    // 6. Deduct stock for all ordered products
     newOrder.items.forEach(item => {
       recordStockMovement(
         item.productId,
@@ -1249,7 +1349,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     });
 
-    // 4. Update Client Ledger and Receivables
+    // 7. Update Client Ledger and Receivables
     // Credit amount = grandTotal - amountPaid
     const creditCreated = newOrder.grandTotal - newOrder.amountPaid;
     const client = clientsRef.current.find(c => c.id === newOrder.clientId) || clients.find(c => c.id === newOrder.clientId);
@@ -1301,7 +1401,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('Created Sale', 'Sales', orderNumber, `Sale #${orderNumber} for ${newOrder.companyName} - Total: Rs. ${newOrder.grandTotal.toLocaleString()}, Cash: Rs. ${newOrder.amountPaid.toLocaleString()}, Credit: Rs. ${creditCreated.toLocaleString()}`);
-    syncMutation('order', 'upsert', newOrder);
     return { success: true, order: newOrder };
   };
 
@@ -1409,7 +1508,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Sales Returns
   const recordSalesReturn = (returnData: Omit<SalesReturn, 'id' | 'returnNumber' | 'status'>): SalesReturn => {
-    const returnNumber = `SRTN-${Math.floor(1000 + Math.random() * 1000)}`;
+    const returnNumber = generateNextSequenceNumber('SRTN-', salesReturns.map(r => r.returnNumber), 1001);
     const newReturn: SalesReturn = {
       ...returnData,
       id: generateUUID(),
@@ -1558,7 +1657,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       throw new Error(`Order #${orderId} not found.`);
     }
 
-    const returnNumberBase = `SRTN-${Math.floor(1000 + Math.random() * 9000)}`;
+    const returnNumberBase = generateNextSequenceNumber('SRTN-', salesReturns.map(r => r.returnNumber), 1001);
     const reason = options?.reason || 'Customer sales invoice returned';
     const isResalableGlobal = options?.isResalable !== undefined ? options.isResalable : true;
     const returnDate = getTodayKarachiDate();
@@ -1816,7 +1915,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
     }
 
-    const paymentNumber = `RCT-${Math.floor(2000 + Math.random() * 1000)}`;
+    const paymentNumber = generateNextSequenceNumber('RCT-', payments.map(p => p.paymentNumber), 2001);
     const newPayment: Payment = {
       ...paymentData,
       id: generateUUID(),
@@ -2108,7 +2207,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Distribution Expenses
   const addExpense = (expenseData: Omit<Expense, 'id' | 'expenseNumber'>): Expense => {
-    const expenseNumber = `EXP-${Math.floor(100 + Math.random() * 900)}`;
+    const expenseNumber = generateNextSequenceNumber('EXP-', expenses.map(e => e.expenseNumber), 101);
     const newExpense: Expense = {
       ...expenseData,
       id: generateUUID(),
@@ -2123,7 +2222,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Bad Debts & Recoveries
   const requestBadDebt = (badDebtData: Omit<BadDebt, 'id' | 'badDebtNumber' | 'status'>): BadDebt => {
-    const badDebtNumber = `BDT-${Math.floor(100 + Math.random() * 900)}`;
+    const badDebtNumber = generateNextSequenceNumber('BDT-', badDebts.map(b => b.badDebtNumber), 101);
     const newBadDebt: BadDebt = {
       ...badDebtData,
       id: generateUUID(),
@@ -2203,7 +2302,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const recordBadDebtRecovery = (recoveryData: Omit<BadDebtRecovery, 'id' | 'recoveryNumber'>): BadDebtRecovery => {
-    const recoveryNumber = `BREC-${Math.floor(100 + Math.random() * 900)}`;
+    const recoveryNumber = generateNextSequenceNumber('BREC-', badDebtRecoveries.map(r => r.recoveryNumber), 101);
     const newRecovery: BadDebtRecovery = {
       ...recoveryData,
       id: generateUUID(),

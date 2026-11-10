@@ -67,7 +67,11 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     : [];
 
   const matchedOrders = searchQuery.trim()
-    ? orders.filter(o => o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) || o.companyName.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 3)
+    ? orders.filter(o =>
+        o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        o.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (o.clientName && o.clientName.toLowerCase().includes(searchQuery.toLowerCase()))
+      ).slice(0, 5)
     : [];
 
   return (
@@ -338,7 +342,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                       key={o.id}
                       onClick={() => {
                         setIsSearchOpen(false);
-                        router.push(`/orders`);
+                        router.push(`/orders/${o.id}`);
                       }}
                       className="p-2 bg-slate-50 hover:bg-brand-50 rounded-lg cursor-pointer flex justify-between items-center transition"
                     >

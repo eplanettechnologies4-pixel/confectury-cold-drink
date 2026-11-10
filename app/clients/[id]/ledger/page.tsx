@@ -16,11 +16,12 @@ import {
 } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { Modal } from '@/components/ui/Modal';
+import { generateNextSequenceNumber } from '@/lib/utils';
 
 export default function ClientLedgerPage() {
   const params = useParams();
   const clientId = params.id as string;
-  const { clients, getLedgerForClient, recordPayment } = useAppState();
+  const { clients, payments, getLedgerForClient, recordPayment } = useAppState();
 
   const client = clients.find(c => c.id === clientId || c.clientId === clientId);
   const rawLedger = client ? getLedgerForClient(client.id) : [];
@@ -79,7 +80,7 @@ export default function ClientLedgerPage() {
       paymentDate: new Date().toISOString().split('T')[0],
       amount: paymentAmount,
       paymentMethod,
-      referenceNumber: paymentRef || `REF-${Math.floor(10000 + Math.random() * 90000)}`,
+      referenceNumber: paymentRef || generateNextSequenceNumber('RCT-', payments.map(p => p.paymentNumber || p.referenceNumber), 2001, 4),
       recordedBy: 'Michael Chang',
     });
 

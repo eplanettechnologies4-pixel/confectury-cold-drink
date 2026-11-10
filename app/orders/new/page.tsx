@@ -362,7 +362,7 @@ export default function NewOrderPage() {
     }
   });
 
-  const handleCreateOrder = (status: OrderStatus = 'Posted') => {
+  const handleCreateOrder = async (status: OrderStatus = 'Posted') => {
     setErrorMessage('');
     if (!selectedClient) {
       setErrorMessage('Please select a customer.');
@@ -385,7 +385,7 @@ export default function NewOrderPage() {
 
     const areaToSave = displayArea || selectedClient.area || 'Faisalabad';
 
-    const res = createOrder({
+    const res = await createOrder({
       clientId: selectedClient.id,
       clientName: selectedClient.name,
       companyName: selectedClient.companyName,

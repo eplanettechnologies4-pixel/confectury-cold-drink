@@ -22,6 +22,7 @@ import {
 import { useAppState } from '@/lib/store';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
+import { generateNextSequenceNumber } from '@/lib/utils';
 
 export default function ClientDetailPage() {
   const params = useParams();
@@ -62,7 +63,7 @@ export default function ClientDetailPage() {
       paymentDate: new Date().toISOString().split('T')[0],
       amount: paymentAmount,
       paymentMethod,
-      referenceNumber: paymentRef || `REF-${Math.floor(10000 + Math.random() * 90000)}`,
+      referenceNumber: paymentRef || generateNextSequenceNumber('RCT-', payments.map(p => p.paymentNumber || p.referenceNumber), 2001, 4),
       recordedBy: 'Michael Chang',
     });
 

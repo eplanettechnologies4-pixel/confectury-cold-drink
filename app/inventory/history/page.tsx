@@ -118,7 +118,7 @@ export default function StockHistoryPage() {
         columns={columns}
         data={inventoryTransactions}
         searchPlaceholder="Search movement history..."
-        searchField={(t) => `${t.reference} ${t.productName} ${t.sku} ${t.user} ${t.type}`}
+        searchField={(t) => `${t.reference} ${t.productName} ${t.sku} ${t.user} ${t.type} ${t.notes || ''} ${t.supplier || ''} ${t.warehouse || ''}`}
         filters={[
           {
             key: 'type',

@@ -6,10 +6,11 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowDownRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { StockMovementType } from '@/types';
+import { generateNextSequenceNumber } from '@/lib/utils';
 
 export default function StockOutPage() {
   const router = useRouter();
-  const { products, recordStockMovement } = useAppState();
+  const { products, inventoryTransactions, recordStockMovement } = useAppState();
 
   const [productId, setProductId] = useState(products[0]?.id || '');
   const [reason, setReason] = useState<StockMovementType>('Damaged');
@@ -29,7 +30,7 @@ export default function StockOutPage() {
       productId,
       reason,
       -quantity, // negative for deduction
-      `STK-OUT-${Math.floor(1000 + Math.random() * 9000)}`,
+      generateNextSequenceNumber('STK-OUT-', inventoryTransactions.map(t => t.reference), 1001, 4),
       notes || `Stock deduction for ${reason}`
     );
 

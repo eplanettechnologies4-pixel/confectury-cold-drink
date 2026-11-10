@@ -33,7 +33,7 @@ export default function ReceiptPage() {
   const handleEmailSuccess = (email: string) => {
     // Log the successful email
     const newLog: ReceiptLog = {
-      id: Math.random().toString(36).substring(7),
+      id: `log-${Date.now()}-${receiptLogs.length}`,
       orderId: order.id,
       receiptNumber: `EP-${order.id.substring(0, 6).toUpperCase()}`,
       action: 'EMAILED',

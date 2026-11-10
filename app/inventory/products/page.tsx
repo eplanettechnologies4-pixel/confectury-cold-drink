@@ -24,7 +24,7 @@ import { DataTable, Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
 import { Product, ProductCategory, ProductPackagingUnit } from '@/types';
-import { formatPKR, formatDateDDMMYYYY, BUSINESS_CONFIG } from '@/lib/utils';
+import { formatPKR, formatDateDDMMYYYY, BUSINESS_CONFIG, generateNextSequenceNumber } from '@/lib/utils';
 
 export default function ProductsCatalogPage() {
   const { products, addProduct, updateProduct, deleteProduct, suppliers } = useAppState();
@@ -71,8 +71,8 @@ export default function ProductsCatalogPage() {
     setEditingProduct(null);
     setFormData({
       ...initialFormState,
-      sku: `SKU-${Date.now().toString().slice(-4)}`,
-      barcode: `896${Math.floor(100000000 + Math.random() * 900000000)}`,
+      sku: generateNextSequenceNumber('SKU-', products.map(p => p.sku), 1001),
+      barcode: generateNextSequenceNumber('896', products.map(p => p.barcode), 100000001, 9),
       category: selectedCategory !== 'All' ? selectedCategory : 'Cold Drinks',
       manufacturingDate: new Date().toISOString().split('T')[0],
       expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],

@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ShoppingCart, Plus, Download, Eye, RotateCcw, AlertTriangle, CheckCircle, Package, ChevronDown } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ShoppingCart, Plus, Download, Eye, RotateCcw, AlertTriangle, CheckCircle, Package, ChevronDown, Search } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -13,25 +13,36 @@ import { formatPKR, formatDateDDMMYYYY } from '@/lib/utils';
 
 export default function OrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { orders, updateOrderPaymentStatus } = useAppState();
 
   const [viewFilter, setViewFilter] = useState<'Active' | 'Returned' | 'All'>('Active');
   const [returnModalOrder, setReturnModalOrder] = useState<Order | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>(() => searchParams.get('search') || '');
 
   // Active sales (returned and cancelled sales are removed from daily active sales)
-  const activeOrders = orders.filter(o => o.status !== 'Returned' && o.status !== 'Cancelled');
-  const returnedOrders = orders.filter(o => o.status === 'Returned');
+  const activeOrders = useMemo(
+    () => orders.filter(o => o.status !== 'Returned' && o.status !== 'Cancelled' && !(typeof o.notes === 'string' && o.notes.includes('[RETURNED]'))),
+    [orders]
+  );
+  const returnedOrders = useMemo(
+    () => orders.filter(o => o.status === 'Returned' || o.status === 'Cancelled' || (typeof o.notes === 'string' && o.notes.includes('[RETURNED]'))),
+    [orders]
+  );
   const pendingOrders = activeOrders.filter(o => o.status === 'Pending' || o.status === 'Draft').length;
   const confirmedOrders = activeOrders.filter(o => o.status === 'Confirmed' || o.status === 'Delivered' || o.status === 'Posted').length;
   const totalSalesVal = activeOrders.reduce((acc, o) => acc + o.grandTotal, 0);
 
-  // Displayed orders depending on view tab
-  const displayedOrders = orders.filter(o => {
-    if (viewFilter === 'Active') return o.status !== 'Returned' && o.status !== 'Cancelled';
-    if (viewFilter === 'Returned') return o.status === 'Returned';
-    return true; // All
-  });
+  // When searching, search across all records so no invoice is hidden
+  const displayedOrders = useMemo(() => {
+    if (searchTerm.trim() !== '') {
+      return orders;
+    }
+    if (viewFilter === 'Active') return activeOrders;
+    if (viewFilter === 'Returned') return returnedOrders;
+    return orders; // All
+  }, [orders, viewFilter, searchTerm, activeOrders, returnedOrders]);
 
   const handleOpenReturnModal = (order: Order) => {
     setReturnModalOrder(order);
@@ -290,12 +301,35 @@ export default function OrdersPage() {
         </span>
       </div>
 
+      {/* Searching Status Indicator */}
+      {searchTerm.trim() && (
+        <div className="flex items-center justify-between text-xs text-brand-700 bg-brand-50 border border-brand-200 px-3.5 py-2 rounded-xl">
+          <div className="flex items-center space-x-2">
+            <Search className="h-4 w-4 text-brand-600" />
+            <span>
+              Searching across all <strong>{orders.length}</strong> total orders for: &ldquo;<strong>{searchTerm}</strong>&rdquo;
+            </span>
+          </div>
+          <button
+            onClick={() => setSearchTerm('')}
+            className="text-xs text-brand-700 hover:text-brand-900 font-bold underline"
+          >
+            Clear Search
+          </button>
+        </div>
+      )}
+
       {/* Orders Table */}
       <DataTable
         columns={columns}
         data={displayedOrders}
-        searchPlaceholder="Search order #, client name, or salesperson..."
-        searchField={(o) => `${o.orderNumber} ${o.companyName} ${o.clientName} ${o.salesperson}`}
+        initialSearch={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Search invoice # (e.g. INV-9501), client, SKU, or salesperson..."
+        searchField={(o) => {
+          const itemsText = (o.items || []).map(i => `${i.productName} ${i.sku} ${i.category || ''}`).join(' ');
+          return `${o.orderNumber} ${o.companyName} ${o.clientName} ${o.salesperson} ${o.area} ${o.status} ${o.paymentStatus} ${o.paymentMethod} ${o.orderDate} ${o.notes || ''} ${itemsText}`;
+        }}
         filters={[
           {
             key: 'paymentStatus',

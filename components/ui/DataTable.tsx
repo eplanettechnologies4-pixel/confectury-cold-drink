@@ -34,6 +34,8 @@ interface DataTableProps<T> {
   pageSize?: number;
   emptyTitle?: string;
   emptySub?: string;
+  initialSearch?: string;
+  onSearchChange?: (term: string) => void;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -48,8 +50,24 @@ export function DataTable<T extends { id: string }>({
   pageSize = 10,
   emptyTitle = 'No records found',
   emptySub = 'Try adjusting your search or filters to find what you are looking for.',
+  initialSearch = '',
+  onSearchChange,
 }: DataTableProps<T>) {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+
+  React.useEffect(() => {
+    if (initialSearch !== undefined && initialSearch !== searchTerm) {
+      setSearchTerm(initialSearch);
+    }
+  }, [initialSearch]);
+
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
+    setCurrentPage(1);
+    if (onSearchChange) {
+      onSearchChange(val);
+    }
+  };
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -99,10 +117,7 @@ export function DataTable<T extends { id: string }>({
             type="text"
             placeholder={searchPlaceholder}
             value={searchTerm}
-            onChange={e => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
+            onChange={e => handleSearchChange(e.target.value)}
             className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
           />
         </div>
