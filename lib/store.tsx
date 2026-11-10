@@ -166,46 +166,8 @@ interface AppStateContextType {
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
 
-// Helper to load localStorage with automatic zero-reset check
-function loadStored<T>(key: string, legacyKey: string, fallback: T): T {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    // If start-from-zero wipe flag is not yet recorded, purge all previous mock items
-    if (!localStorage.getItem('ahmad_wiped_to_zero_v5')) {
-      const keysToWipe = [
-        'ahmad_current_user', 'eplanet_current_user',
-        'ahmad_products', 'eplanet_products',
-        'ahmad_clients', 'eplanet_clients',
-        'ahmad_suppliers', 'eplanet_suppliers',
-        'ahmad_supplier_payments', 'eplanet_supplier_payments',
-        'ahmad_purchases', 'eplanet_purchases',
-        'ahmad_purchase_returns', 'eplanet_purchase_returns',
-        'ahmad_orders', 'eplanet_orders',
-        'ahmad_sales_returns', 'eplanet_sales_returns',
-        'ahmad_payments', 'eplanet_payments',
-        'ahmad_ledgers', 'eplanet_ledgers',
-        'ahmad_stock_tx', 'eplanet_stock_tx',
-        'ahmad_daily_closings', 'eplanet_daily_closings',
-        'ahmad_expenses', 'eplanet_expenses',
-        'ahmad_bad_debts', 'eplanet_bad_debts',
-        'ahmad_bad_debt_recoveries', 'eplanet_bad_debt_recoveries',
-        'ahmad_expiry_records', 'eplanet_expiry_records',
-        'ahmad_damaged_stock', 'eplanet_damaged_stock',
-      ];
-      keysToWipe.forEach(k => localStorage.removeItem(k));
-      localStorage.setItem('ahmad_wiped_to_zero_v5', 'true');
-      return fallback;
-    }
-    const primary = localStorage.getItem(key);
-    if (primary) return JSON.parse(primary);
-  } catch (e) {
-    console.error(`Failed to load ${key}:`, e);
-  }
-  return fallback;
-}
-
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Current user - defaults to null so opening the app/dashboard requires login first
+  // Current user - session authenticated state
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -233,112 +195,27 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return null;
   });
 
-  // Areas
-  const [areas, setAreas] = useState<Area[]>(() => {
-    return loadStored<Area[]>('ahmad_areas', 'eplanet_areas', INITIAL_AREAS);
-  });
-
-  // Clients
-  const [clients, setClients] = useState<Client[]>(() => {
-    return loadStored<Client[]>('ahmad_clients', 'eplanet_clients', INITIAL_CLIENTS);
-  });
-
-  // Products
-  const [products, setProducts] = useState<Product[]>(() => {
-    return loadStored<Product[]>('ahmad_products', 'eplanet_products', INITIAL_PRODUCTS);
-  });
-
-  // Suppliers
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
-    return loadStored<Supplier[]>('ahmad_suppliers', 'eplanet_suppliers', INITIAL_SUPPLIERS);
-  });
-
-  // Supplier Payments
-  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>(() => {
-    return loadStored<SupplierPayment[]>('ahmad_supplier_payments', 'eplanet_supplier_payments', []);
-  });
-
-  // Purchases
-  const [purchases, setPurchases] = useState<Purchase[]>(() => {
-    return loadStored<Purchase[]>('ahmad_purchases', 'eplanet_purchases', INITIAL_PURCHASES);
-  });
-
-  // Purchase Returns
-  const [purchaseReturns, setPurchaseReturns] = useState<PurchaseReturn[]>(() => {
-    return loadStored<PurchaseReturn[]>('ahmad_purchase_returns', 'eplanet_purchase_returns', []);
-  });
-
-  // Sales Orders
-  const [orders, setOrders] = useState<Order[]>(() => {
-    return loadStored<Order[]>('ahmad_orders', 'eplanet_orders', INITIAL_ORDERS);
-  });
-
-  // Sales Returns
-  const [salesReturns, setSalesReturns] = useState<SalesReturn[]>(() => {
-    return loadStored<SalesReturn[]>('ahmad_sales_returns', 'eplanet_sales_returns', []);
-  });
-
-  // Customer Payments
-  const [payments, setPayments] = useState<Payment[]>(() => {
-    return loadStored<Payment[]>('ahmad_payments', 'eplanet_payments', INITIAL_PAYMENTS);
-  });
-
-  // Customer Ledger Entries
-  const [ledgerEntries, setLedgerEntries] = useState<Record<string, LedgerEntry[]>>(() => {
-    return loadStored<Record<string, LedgerEntry[]>>('ahmad_ledgers', 'eplanet_ledgers', INITIAL_LEDGER_ENTRIES);
-  });
-
-  // Inventory Movement Ledger
-  const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>(() => {
-    return loadStored<InventoryTransaction[]>('ahmad_stock_tx', 'eplanet_stock_tx', INITIAL_STOCK_TRANSACTIONS);
-  });
-
-  // Daily Closings
-  const [dailyClosings, setDailyClosings] = useState<DailyClosing[]>(() => {
-    return loadStored<DailyClosing[]>('ahmad_daily_closings', 'eplanet_daily_closings', INITIAL_DAILY_CLOSINGS);
-  });
-
-  // Expenses
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    return loadStored<Expense[]>('ahmad_expenses', 'eplanet_expenses', INITIAL_EXPENSES);
-  });
-
-  // Bad Debts
-  const [badDebts, setBadDebts] = useState<BadDebt[]>(() => {
-    return loadStored<BadDebt[]>('ahmad_bad_debts', 'eplanet_bad_debts', INITIAL_BAD_DEBTS);
-  });
-
-  // Bad Debt Recoveries
-  const [badDebtRecoveries, setBadDebtRecoveries] = useState<BadDebtRecovery[]>(() => {
-    return loadStored<BadDebtRecovery[]>('ahmad_bad_debt_recoveries', 'eplanet_bad_debt_recoveries', []);
-  });
-
-  // Expiry Records
-  const [expiryRecords, setExpiryRecords] = useState<ExpiryRecord[]>(() => {
-    return loadStored<ExpiryRecord[]>('ahmad_expiry_records', 'eplanet_expiry_records', INITIAL_EXPIRY_RECORDS);
-  });
-
-  // Damaged Stock Records
-  const [damagedStockRecords, setDamagedStockRecords] = useState<DamagedStockRecord[]>(() => {
-    return loadStored<DamagedStockRecord[]>('ahmad_damaged_stock', 'eplanet_damaged_stock', INITIAL_DAMAGED_STOCK);
-  });
-
-  // Staff - strictly maintained as the single Admin user
-  const [staff, setStaff] = useState<Staff[]>(() => {
-    const loaded = loadStored<Staff[]>('ahmad_staff', 'eplanet_staff', INITIAL_STAFF);
-    if (!Array.isArray(loaded) || loaded.length !== 1 || loaded[0]?.id !== '00a1090c-43b2-41ae-83a9-7d3c2d4daaaf') {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('ahmad_staff', JSON.stringify(INITIAL_STAFF));
-      }
-      return INITIAL_STAFF;
-    }
-    return loaded;
-  });
-
-  // Audit Logs
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    return loadStored<AuditLog[]>('ahmad_audit_logs', 'eplanet_audit_logs', INITIAL_AUDIT_LOGS);
-  });
+  // Business state directly synced from Supabase (no localstorage caching)
+  const [areas, setAreas] = useState<Area[]>(INITIAL_AREAS);
+  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(INITIAL_SUPPLIERS);
+  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>(INITIAL_PURCHASES);
+  const [purchaseReturns, setPurchaseReturns] = useState<PurchaseReturn[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [salesReturns, setSalesReturns] = useState<SalesReturn[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [ledgerEntries, setLedgerEntries] = useState<Record<string, LedgerEntry[]>>({});
+  const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>([]);
+  const [dailyClosings, setDailyClosings] = useState<DailyClosing[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [badDebts, setBadDebts] = useState<BadDebt[]>([]);
+  const [badDebtRecoveries, setBadDebtRecoveries] = useState<BadDebtRecovery[]>([]);
+  const [expiryRecords, setExpiryRecords] = useState<ExpiryRecord[]>([]);
+  const [damagedStockRecords, setDamagedStockRecords] = useState<DamagedStockRecord[]>([]);
+  const [staff, setStaff] = useState<Staff[]>(INITIAL_STAFF);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   // Active Refs for immediate synchronous access during batched / looped mutations
   const productsRef = useRef<Product[]>(products);
@@ -353,7 +230,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const dailyClosingsRef = useRef<DailyClosing[]>(dailyClosings);
   dailyClosingsRef.current = dailyClosings;
 
-  // Persistence Effects
+  // Active purge of obsolete local storage business tables on startup
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const businessKeys = [
+      'ahmad_areas', 'ahmad_clients', 'ahmad_products', 'ahmad_suppliers',
+      'ahmad_supplier_payments', 'ahmad_purchases', 'ahmad_purchase_returns',
+      'ahmad_orders', 'ahmad_sales_returns', 'ahmad_payments', 'ahmad_ledgers',
+      'ahmad_stock_tx', 'ahmad_daily_closings', 'ahmad_expenses', 'ahmad_bad_debts',
+      'ahmad_bad_debt_recoveries', 'ahmad_damaged_stock', 'ahmad_expiry_records',
+      'ahmad_audit_logs', 'ahmad_staff', 'ahmad_wiped_to_zero_v4', 'ahmad_wiped_to_zero_v5',
+      'eplanet_areas', 'eplanet_clients', 'eplanet_products', 'eplanet_suppliers',
+      'eplanet_supplier_payments', 'eplanet_purchases', 'eplanet_purchase_returns',
+      'eplanet_orders', 'eplanet_sales_returns', 'eplanet_payments', 'eplanet_ledgers',
+      'eplanet_stock_tx', 'eplanet_daily_closings', 'eplanet_expenses', 'eplanet_bad_debts',
+      'eplanet_bad_debt_recoveries', 'eplanet_damaged_stock', 'eplanet_expiry_records',
+      'eplanet_audit_logs', 'eplanet_staff'
+    ];
+    businessKeys.forEach(k => {
+      try { localStorage.removeItem(k); } catch (_) {}
+    });
+  }, []);
+
+  // Session Authentication Persistence Effect (strictly for login credentials)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (currentUser) {
@@ -366,27 +265,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       localStorage.removeItem('eplanet_current_user');
     }
   }, [currentUser]);
-
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_areas', JSON.stringify(areas)); }, [areas]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_clients', JSON.stringify(clients)); }, [clients]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_products', JSON.stringify(products)); }, [products]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_suppliers', JSON.stringify(suppliers)); }, [suppliers]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_supplier_payments', JSON.stringify(supplierPayments)); }, [supplierPayments]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_purchases', JSON.stringify(purchases)); }, [purchases]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_purchase_returns', JSON.stringify(purchaseReturns)); }, [purchaseReturns]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_orders', JSON.stringify(orders)); }, [orders]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_sales_returns', JSON.stringify(salesReturns)); }, [salesReturns]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_payments', JSON.stringify(payments)); }, [payments]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_ledgers', JSON.stringify(ledgerEntries)); }, [ledgerEntries]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_stock_tx', JSON.stringify(inventoryTransactions)); }, [inventoryTransactions]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_daily_closings', JSON.stringify(dailyClosings)); }, [dailyClosings]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_expenses', JSON.stringify(expenses)); }, [expenses]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_bad_debts', JSON.stringify(badDebts)); }, [badDebts]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_bad_debt_recoveries', JSON.stringify(badDebtRecoveries)); }, [badDebtRecoveries]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_expiry_records', JSON.stringify(expiryRecords)); }, [expiryRecords]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_damaged_stock', JSON.stringify(damagedStockRecords)); }, [damagedStockRecords]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_staff', JSON.stringify(staff)); }, [staff]);
-  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('ahmad_audit_logs', JSON.stringify(auditLogs)); }, [auditLogs]);
 
   // Supabase Synchronization State & Helpers
   const [supabaseSyncStatus, setSupabaseSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
@@ -419,176 +297,68 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (json.success && json.configured) {
         if (json.hasData && json.data) {
           if (Array.isArray(json.data.areas)) {
-            setAreas(prev => {
-              const sbMap = new Map((json.data.areas as Area[]).map(a => [a.id, a]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              const merged = [...unsynced, ...json.data.areas];
-              try { localStorage.setItem('ahmad_areas', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setAreas(json.data.areas);
           }
           if (Array.isArray(json.data.clients) && json.data.clients.length > 0) {
-            setClients(prev => {
-              const sbMap = new Map((json.data.clients as Client[]).map(c => [c.id, c]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('client', 'upsert', u));
-              const merged = [...unsynced, ...json.data.clients];
-              clientsRef.current = merged;
-              try { localStorage.setItem('ahmad_clients', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setClients(json.data.clients);
+            clientsRef.current = json.data.clients;
           }
           if (Array.isArray(json.data.products) && json.data.products.length > 0) {
-            setProducts(prev => {
-              const sbMap = new Map((json.data.products as Product[]).map(p => [p.id, p]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('product', 'upsert', u));
-              const merged = [...unsynced, ...json.data.products];
-              productsRef.current = merged;
-              try { localStorage.setItem('ahmad_products', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setProducts(json.data.products);
+            productsRef.current = json.data.products;
           }
           if (Array.isArray(json.data.suppliers) && json.data.suppliers.length > 0) {
-            setSuppliers(prev => {
-              const sbMap = new Map((json.data.suppliers as Supplier[]).map(s => [s.id, s]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('supplier', 'upsert', u));
-              const merged = [...unsynced, ...json.data.suppliers];
-              suppliersRef.current = merged;
-              try { localStorage.setItem('ahmad_suppliers', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setSuppliers(json.data.suppliers);
+            suppliersRef.current = json.data.suppliers;
           }
           if (Array.isArray(json.data.supplierPayments)) {
-            setSupplierPayments(prev => {
-              const sbMap = new Map((json.data.supplierPayments as SupplierPayment[]).map(p => [p.id, p]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('supplier_payment', 'upsert', u));
-              const merged = [...unsynced, ...json.data.supplierPayments];
-              try { localStorage.setItem('ahmad_supplier_payments', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setSupplierPayments(json.data.supplierPayments);
           }
           if (Array.isArray(json.data.purchases)) {
-            setPurchases(prev => {
-              const sbMap = new Map((json.data.purchases as Purchase[]).map(p => [p.id, p]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('purchase', 'upsert', u));
-              const merged = [...unsynced, ...json.data.purchases];
-              try { localStorage.setItem('ahmad_purchases', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setPurchases(json.data.purchases);
           }
           if (Array.isArray(json.data.purchaseReturns)) {
-            setPurchaseReturns(prev => {
-              const sbMap = new Map((json.data.purchaseReturns as PurchaseReturn[]).map(p => [p.id, p]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              const merged = [...unsynced, ...json.data.purchaseReturns];
-              try { localStorage.setItem('ahmad_purchase_returns', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setPurchaseReturns(json.data.purchaseReturns);
           }
           if (Array.isArray(json.data.orders)) {
-            setOrders(prev => {
-              const sbOrderMap = new Map((json.data.orders as Order[]).map(o => [o.id, o]));
-              const unsynced = prev.filter(p => !sbOrderMap.has(p.id));
-              if (unsynced.length > 0) {
-                unsynced.forEach(u => syncMutation('order', 'upsert', u));
-              }
-              const merged = [...unsynced, ...json.data.orders];
-              try { localStorage.setItem('ahmad_orders', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setOrders(json.data.orders);
           }
           if (Array.isArray(json.data.salesReturns)) {
-            setSalesReturns(prev => {
-              const sbMap = new Map((json.data.salesReturns as SalesReturn[]).map(s => [s.id, s]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              const merged = [...unsynced, ...json.data.salesReturns];
-              try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setSalesReturns(json.data.salesReturns);
           }
           if (Array.isArray(json.data.payments)) {
-            setPayments(prev => {
-              const sbMap = new Map((json.data.payments as Payment[]).map(p => [p.id, p]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('payment', 'upsert', u));
-              const merged = [...unsynced, ...json.data.payments];
-              try { localStorage.setItem('ahmad_payments', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setPayments(json.data.payments);
           }
           if (json.data.ledgerEntries && typeof json.data.ledgerEntries === 'object') {
             setLedgerEntries(json.data.ledgerEntries);
-            try { localStorage.setItem('ahmad_ledgers', JSON.stringify(json.data.ledgerEntries)); } catch (_) {}
           }
           if (Array.isArray(json.data.inventoryTransactions)) {
-            setInventoryTransactions(prev => {
-              const sbMap = new Map((json.data.inventoryTransactions as InventoryTransaction[]).map(t => [t.id, t]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              const merged = [...unsynced, ...json.data.inventoryTransactions];
-              try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setInventoryTransactions(json.data.inventoryTransactions);
           }
           if (Array.isArray(json.data.expenses)) {
-            setExpenses(prev => {
-              const sbMap = new Map((json.data.expenses as Expense[]).map(e => [e.id, e]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              if (unsynced.length > 0) unsynced.forEach(u => syncMutation('expense', 'upsert', u));
-              const merged = [...unsynced, ...json.data.expenses];
-              try { localStorage.setItem('ahmad_expenses', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setExpenses(json.data.expenses);
           }
           if (Array.isArray(json.data.dailyClosings) && json.data.dailyClosings.length > 0) {
             setDailyClosings(json.data.dailyClosings);
             dailyClosingsRef.current = json.data.dailyClosings;
-            try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(json.data.dailyClosings)); } catch (_) {}
-          } else {
-            // Keep local closings if Supabase has 0, and upload to Supabase
-            const localClosings = loadStored<DailyClosing[]>('ahmad_daily_closings', 'eplanet_daily_closings', []);
-            if (Array.isArray(localClosings) && localClosings.length > 0) {
-              setDailyClosings(localClosings);
-              dailyClosingsRef.current = localClosings;
-              localClosings.forEach(dc => syncMutation('daily_closing', 'upsert', dc));
-            }
           }
           if (Array.isArray(json.data.badDebts)) {
-            setBadDebts(prev => {
-              const sbMap = new Map((json.data.badDebts as BadDebt[]).map(b => [b.id, b]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              const merged = [...unsynced, ...json.data.badDebts];
-              try { localStorage.setItem('ahmad_bad_debts', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setBadDebts(json.data.badDebts);
           }
           if (Array.isArray(json.data.badDebtRecoveries)) {
-            setBadDebtRecoveries(prev => {
-              const sbMap = new Map((json.data.badDebtRecoveries as BadDebtRecovery[]).map(r => [r.id, r]));
-              const unsynced = prev.filter(p => !sbMap.has(p.id));
-              const merged = [...unsynced, ...json.data.badDebtRecoveries];
-              try { localStorage.setItem('ahmad_bad_debt_recoveries', JSON.stringify(merged)); } catch (_) {}
-              return merged;
-            });
+            setBadDebtRecoveries(json.data.badDebtRecoveries);
           }
           if (Array.isArray(json.data.damagedStockRecords)) {
             setDamagedStockRecords(json.data.damagedStockRecords);
-            try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(json.data.damagedStockRecords)); } catch (_) {}
           }
           if (Array.isArray(json.data.expiryRecords)) {
             setExpiryRecords(json.data.expiryRecords);
-            try { localStorage.setItem('ahmad_expiry_records', JSON.stringify(json.data.expiryRecords)); } catch (_) {}
           }
           if (Array.isArray(json.data.staff)) {
             setStaff(json.data.staff);
-            try { localStorage.setItem('ahmad_staff', JSON.stringify(json.data.staff)); } catch (_) {}
           }
           if (Array.isArray(json.data.auditLogs)) {
             setAuditLogs(json.data.auditLogs);
-            try { localStorage.setItem('ahmad_audit_logs', JSON.stringify(json.data.auditLogs)); } catch (_) {}
           }
         } else {
           INITIAL_AREAS.forEach(area => syncMutation('area', 'upsert', area));
@@ -757,7 +527,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = clients.find(c => c.id === id);
     setClients(prev => {
       const updated = prev.filter(c => c.id !== id);
-      try { localStorage.setItem('ahmad_clients', JSON.stringify(updated)); } catch (_) {}
       return updated;
     });
     syncMutation('client', 'delete', undefined, id);
@@ -787,7 +556,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setProducts(prev => {
       const next = [newProduct, ...prev];
-      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -817,7 +585,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setInventoryTransactions(prev => {
         const next = [tx, ...prev];
-        try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('inventory_tx', 'upsert', tx);
@@ -841,7 +608,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updatedProduct = { ...updated, availableStock: Math.max(0, avail), status };
         return updatedProduct;
       });
-      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -857,7 +623,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     productsRef.current = productsRef.current.filter(p => p.id !== id);
     setProducts(prev => {
       const updated = prev.filter(p => p.id !== id);
-      try { localStorage.setItem('ahmad_products', JSON.stringify(updated)); } catch (_) {}
       return updated;
     });
     syncMutation('product', 'delete', undefined, id);
@@ -888,7 +653,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setProducts(prev => {
       const next = prev.map(p => (p.id === productId ? updatedProduct : p));
-      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -917,7 +681,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setInventoryTransactions(prev => {
       const next = [tx, ...prev];
-      try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(next)); } catch (_) {}
       return next;
     });
     syncMutation('inventory_tx', 'upsert', tx);
@@ -943,31 +706,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setBadDebtRecoveries([]);
     setExpiryRecords([]);
     setDamagedStockRecords([]);
+    setAuditLogs([]);
 
-    setCurrentUser(null);
     if (typeof window !== 'undefined') {
-      const keysToWipe = [
-        'ahmad_current_user', 'eplanet_current_user',
-        'ahmad_products', 'eplanet_products',
-        'ahmad_clients', 'eplanet_clients',
-        'ahmad_suppliers', 'eplanet_suppliers',
-        'ahmad_supplier_payments', 'eplanet_supplier_payments',
-        'ahmad_purchases', 'eplanet_purchases',
-        'ahmad_purchase_returns', 'eplanet_purchase_returns',
-        'ahmad_orders', 'eplanet_orders',
-        'ahmad_sales_returns', 'eplanet_sales_returns',
-        'ahmad_payments', 'eplanet_payments',
-        'ahmad_ledgers', 'eplanet_ledgers',
-        'ahmad_stock_tx', 'eplanet_stock_tx',
-        'ahmad_daily_closings', 'eplanet_daily_closings',
-        'ahmad_expenses', 'eplanet_expenses',
-        'ahmad_bad_debts', 'eplanet_bad_debts',
-        'ahmad_bad_debt_recoveries', 'eplanet_bad_debt_recoveries',
-        'ahmad_expiry_records', 'eplanet_expiry_records',
-        'ahmad_damaged_stock', 'eplanet_damaged_stock',
+      const businessKeys = [
+        'ahmad_areas', 'ahmad_clients', 'ahmad_products', 'ahmad_suppliers',
+        'ahmad_supplier_payments', 'ahmad_purchases', 'ahmad_purchase_returns',
+        'ahmad_orders', 'ahmad_sales_returns', 'ahmad_payments', 'ahmad_ledgers',
+        'ahmad_stock_tx', 'ahmad_daily_closings', 'ahmad_expenses', 'ahmad_bad_debts',
+        'ahmad_bad_debt_recoveries', 'ahmad_damaged_stock', 'ahmad_expiry_records',
+        'ahmad_audit_logs', 'ahmad_staff', 'ahmad_wiped_to_zero_v4', 'ahmad_wiped_to_zero_v5',
+        'eplanet_areas', 'eplanet_clients', 'eplanet_products', 'eplanet_suppliers',
+        'eplanet_supplier_payments', 'eplanet_purchases', 'eplanet_purchase_returns',
+        'eplanet_orders', 'eplanet_sales_returns', 'eplanet_payments', 'eplanet_ledgers',
+        'eplanet_stock_tx', 'eplanet_daily_closings', 'eplanet_expenses', 'eplanet_bad_debts',
+        'eplanet_bad_debt_recoveries', 'eplanet_damaged_stock', 'eplanet_expiry_records',
+        'eplanet_audit_logs', 'eplanet_staff'
       ];
-      keysToWipe.forEach(k => localStorage.removeItem(k));
-      localStorage.setItem('ahmad_wiped_to_zero_v5', 'true');
+      businessKeys.forEach(k => {
+        try { localStorage.removeItem(k); } catch (_) {}
+      });
     }
 
     addAuditLog('Portal Data Reset', 'System', 'RESET', 'All portal data wiped to 0. Fresh start initialized.');
@@ -1000,7 +758,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = suppliers.find(s => s.id === id);
     setSuppliers(prev => {
       const updated = prev.filter(s => s.id !== id);
-      try { localStorage.setItem('ahmad_suppliers', JSON.stringify(updated)); } catch (_) {}
       return updated;
     });
     syncMutation('supplier', 'delete', undefined, id);
@@ -1027,7 +784,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       suppliersRef.current = suppliersRef.current.map(s => (s.id === paymentData.supplierId ? updatedSupplier! : s));
       setSuppliers(prev => {
         const next = prev.map(s => (s.id === paymentData.supplierId ? updatedSupplier! : s));
-        try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('supplier', 'upsert', updatedSupplier);
@@ -1116,7 +872,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         suppliersRef.current = suppliersRef.current.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
         setSuppliers(prev => {
           const next = prev.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
-          try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
           return next;
         });
         syncMutation('supplier', 'upsert', updatedSupplier);
@@ -1174,7 +929,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       suppliersRef.current = suppliersRef.current.map(s => (s.id === newReturn.supplierId ? updatedSupplier : s));
       setSuppliers(prev => {
         const next = prev.map(s => (s.id === newReturn.supplierId ? updatedSupplier : s));
-        try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('supplier', 'upsert', updatedSupplier);
@@ -1186,7 +940,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const updatedPurchase: Purchase = { ...targetPurchase, status: 'Returned' };
       setPurchases(prev => {
         const next = prev.map(p => (p.id === targetPurchase.id ? updatedPurchase : p));
-        try { localStorage.setItem('ahmad_purchases', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('purchase', 'upsert', updatedPurchase);
@@ -1232,7 +985,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       suppliersRef.current = suppliersRef.current.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
       setSuppliers(prev => {
         const next = prev.map(s => (s.id === purchase.supplierId ? updatedSupplier : s));
-        try { localStorage.setItem('ahmad_suppliers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('supplier', 'upsert', updatedSupplier);
@@ -1261,7 +1013,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setPurchaseReturns(prev => {
       const next = [newReturn, ...prev];
-      try { localStorage.setItem('ahmad_purchase_returns', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -1269,7 +1020,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const updatedPurchase: Purchase = { ...purchase, status: 'Returned' };
     setPurchases(prev => {
       const next = prev.map(p => (p.id === purchase.id ? updatedPurchase : p));
-      try { localStorage.setItem('ahmad_purchases', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -1328,10 +1078,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
     }
 
-    // 5. Update local state & localStorage now that Supabase confirmed
+    // 5. Update local state now that Supabase confirmed
     setOrders(prev => {
       const next = [newOrder, ...prev.filter(o => o.id !== newOrder.id && o.orderNumber !== newOrder.orderNumber)];
-      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -1376,7 +1125,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...prev,
           [newOrder.clientId]: [...(prev[newOrder.clientId] || []), ledgerEntry],
         };
-        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('ledger', 'upsert', ledgerEntry);
@@ -1394,7 +1142,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setClients(prev => {
         const next = prev.map(c => (c.id === newOrder.clientId ? updatedClient : c));
-        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('client', 'upsert', updatedClient);
@@ -1414,7 +1161,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         return o;
       });
-      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
       return next;
     });
     addAuditLog('Updated Order Status', 'Sales', orderId, `Changed order status to ${status}`);
@@ -1442,7 +1188,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setOrders(prev => {
       const next = prev.map(o => (o.id === targetOrder.id ? updatedOrder : o));
-      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -1474,7 +1219,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...prev,
           [targetOrder.clientId]: [...(prev[targetOrder.clientId] || []), ledgerEntry],
         };
-        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('ledger', 'upsert', ledgerEntry);
@@ -1490,7 +1234,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setClients(prev => {
         const next = prev.map(c => (c.id === targetOrder.clientId ? updatedClient : c));
-        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('client', 'upsert', updatedClient);
@@ -1518,7 +1261,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setSalesReturns(prev => {
       const next = [newReturn, ...prev];
-      try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -1554,7 +1296,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
       setDamagedStockRecords(prev => {
         const next = [...prev, damagedRecord];
-        try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('damaged_stock', 'upsert', damagedRecord);
@@ -1585,7 +1326,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...prev,
           [newReturn.clientId]: [...(prev[newReturn.clientId] || []), ledgerEntry],
         };
-        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('ledger', 'upsert', ledgerEntry);
@@ -1601,7 +1341,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setClients(prev => {
         const next = prev.map(c => (c.id === newReturn.clientId ? updatedClient : c));
-        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('client', 'upsert', updatedClient);
@@ -1640,7 +1379,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
       setOrders(prev => {
         const next = prev.map(o => (o.id === targetOrder.id ? updatedOrder : o));
-        try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('order', 'upsert', updatedOrder);
@@ -1759,7 +1497,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
         setDamagedStockRecords(prev => {
           const next = [...prev, damagedRecord];
-          try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(next)); } catch (_) {}
           return next;
         });
         syncMutation('damaged_stock', 'upsert', damagedRecord);
@@ -1794,7 +1531,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...prev,
           [order.clientId]: [...(prev[order.clientId] || []), ledgerEntry],
         };
-        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('ledger', 'upsert', ledgerEntry);
@@ -1810,7 +1546,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setClients(prev => {
         const next = prev.map(c => (c.id === order.clientId ? updatedClient : c));
-        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('client', 'upsert', updatedClient);
@@ -1842,7 +1577,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setSalesReturns(prev => {
       const next = [...createdSalesReturns, ...prev];
-      try { localStorage.setItem('ahmad_sales_returns', JSON.stringify(next)); } catch (_) {}
       return next;
     });
     createdSalesReturns.forEach(sr => syncMutation('sales_return', 'upsert', sr));
@@ -1891,7 +1625,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setOrders(prev => {
       const next = prev.map(o => (o.id === order.id ? updatedOrder : o));
-      try { localStorage.setItem('ahmad_orders', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -1925,7 +1658,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setPayments(prev => {
       const next = [newPayment, ...prev];
-      try { localStorage.setItem('ahmad_payments', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -1954,7 +1686,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...prev,
           [paymentData.clientId]: [...(prev[paymentData.clientId] || []), ledgerEntry],
         };
-        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('ledger', 'upsert', ledgerEntry);
@@ -1970,7 +1701,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setClients(prev => {
         const next = prev.map(c => (c.id === paymentData.clientId ? updatedClient : c));
-        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('client', 'upsert', updatedClient);
@@ -2017,7 +1747,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setProducts(prev => {
       const next = prev.map(p => (p.id === productId ? updatedProduct : p));
-      try { localStorage.setItem('ahmad_products', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -2049,7 +1778,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setInventoryTransactions(prev => {
       const next = [tx, ...prev];
-      try { localStorage.setItem('ahmad_stock_tx', JSON.stringify(next)); } catch (_) {}
       return next;
     });
     syncMutation('inventory_tx', 'upsert', tx);
@@ -2139,7 +1867,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } else {
         next = [...prev, updatedRecord];
       }
-      try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -2171,7 +1898,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } else {
         next = [...prev, updatedRecord];
       }
-      try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -2196,7 +1922,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setDailyClosings(prev => {
       const next = prev.map(c => (c.date === dateStr ? updatedRecord : c));
-      try { localStorage.setItem('ahmad_daily_closings', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -2248,7 +1973,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setBadDebts(prev => {
       const next = prev.map(b => (b.id === id ? updatedBadDebt : b));
-      try { localStorage.setItem('ahmad_bad_debts', JSON.stringify(next)); } catch (_) {}
       return next;
     });
     syncMutation('bad_debt', 'upsert', updatedBadDebt);
@@ -2277,7 +2001,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...prev,
           [target.clientId]: [...(prev[target.clientId] || []), ledgerEntry],
         };
-        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('ledger', 'upsert', ledgerEntry);
@@ -2292,7 +2015,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setClients(prev => {
         const next = prev.map(c => (c.id === target.clientId ? updatedClient : c));
-        try { localStorage.setItem('ahmad_clients', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('client', 'upsert', updatedClient);
@@ -2310,7 +2032,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setBadDebtRecoveries(prev => {
       const next = [newRecovery, ...prev];
-      try { localStorage.setItem('ahmad_bad_debt_recoveries', JSON.stringify(next)); } catch (_) {}
       return next;
     });
 
@@ -2335,7 +2056,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...prev,
           [recoveryData.clientId]: [...(prev[recoveryData.clientId] || []), ledgerEntry],
         };
-        try { localStorage.setItem('ahmad_ledgers', JSON.stringify(next)); } catch (_) {}
         return next;
       });
       syncMutation('ledger', 'upsert', ledgerEntry);
@@ -2371,7 +2091,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Update expiry record status
     setExpiryRecords(prev => {
       const next = prev.map(e => (e.id === recordId ? updatedRecord : e));
-      try { localStorage.setItem('ahmad_expiry_records', JSON.stringify(next)); } catch (_) {}
       return next;
     });
     syncMutation('expiry_record', 'upsert', updatedRecord);
@@ -2392,7 +2111,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setDamagedStockRecords(prev => {
       const next = [...prev, newDamaged];
-      try { localStorage.setItem('ahmad_damaged_stock', JSON.stringify(next)); } catch (_) {}
       return next;
     });
     syncMutation('damaged_stock', 'upsert', newDamaged);
