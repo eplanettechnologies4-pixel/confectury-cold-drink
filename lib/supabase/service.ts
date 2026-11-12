@@ -9,6 +9,7 @@ import {
   PurchaseItem,
   Order,
   OrderItem,
+  OrderStatus,
   Payment,
   LedgerEntry,
   InventoryTransaction,
@@ -398,10 +399,29 @@ export const mappers = {
   // ORDERS
   orderToDb(o: Order) {
     const isReturned = o.status === 'Returned';
+    const isPartiallyReturned = o.status === 'Partially Returned';
     let notes = o.notes || null;
     if (isReturned && (!notes || !notes.includes('[RETURNED]'))) {
       notes = notes ? `${notes} [RETURNED]` : '[RETURNED]';
+    } else if (isPartiallyReturned && (!notes || !notes.includes('[PARTIALLY_RETURNED]'))) {
+      notes = notes ? `${notes} [PARTIALLY_RETURNED]` : '[PARTIALLY_RETURNED]';
     }
+
+    // Map to valid status accepted by Supabase orders_status_check constraint:
+    // ('Draft', 'Pending', 'Confirmed', 'Delivered', 'Cancelled')
+    let dbStatus: string;
+    if (isReturned) {
+      dbStatus = 'Cancelled';
+    } else if (o.status === 'Draft') {
+      dbStatus = 'Draft';
+    } else if (o.status === 'Pending') {
+      dbStatus = 'Pending';
+    } else if (o.status === 'Cancelled') {
+      dbStatus = 'Cancelled';
+    } else {
+      dbStatus = 'Delivered';
+    }
+
     return {
       id: ensureUUID(o.id, '60000001'),
       order_number: o.orderNumber,
@@ -417,7 +437,7 @@ export const mappers = {
       grand_total: Number(o.grandTotal) || 0,
       amount_paid: Number(o.amountPaid) || 0,
       amount_remaining: Number(o.amountRemaining) || 0,
-      status: isReturned ? 'Returned' : (o.status || 'Posted'),
+      status: dbStatus,
       payment_method: o.paymentMethod || 'Cash',
       payment_status: o.paymentStatus || 'Unpaid',
       notes,
@@ -427,12 +447,15 @@ export const mappers = {
   orderFromDb(row: any, items: OrderItem[] = [], clientsMap?: Map<string, any>): Order {
     const clt = clientsMap ? clientsMap.get(row.client_id) : null;
     const isReturned = row.status === 'Cancelled' || (typeof row.notes === 'string' && row.notes.includes('[RETURNED]'));
+    const isPartiallyReturned = typeof row.notes === 'string' && row.notes.includes('[PARTIALLY_RETURNED]');
+    const status: OrderStatus = isReturned ? 'Returned' : isPartiallyReturned ? 'Partially Returned' : 'Posted';
+    const resolvedClientName = clt?.companyName || clt?.name || row.client_name || 'Client';
     return {
       id: row.id,
       orderNumber: row.order_number,
       clientId: row.client_id,
-      clientName: clt?.name || row.client_name || 'Client',
-      companyName: clt?.companyName || row.company_name || 'Shop',
+      clientName: resolvedClientName,
+      companyName: clt?.companyName || row.company_name || resolvedClientName,
       area: row.area,
       partyCategory: row.party_category || 'B',
       salesperson: row.salesperson,
@@ -444,7 +467,7 @@ export const mappers = {
       grandTotal: Number(row.grand_total) || 0,
       amountPaid: Number(row.amount_paid) || 0,
       amountRemaining: Number(row.amount_remaining) || 0,
-      status: isReturned ? 'Returned' : (row.status || 'Posted'),
+      status,
       paymentMethod: row.payment_method || 'Cash',
       paymentStatus: row.payment_status || 'Unpaid',
       notes: row.notes || '',
@@ -967,13 +990,14 @@ export const mappers = {
     const clt = clientsMap ? clientsMap.get(row.client_id) : null;
     const prod = productsMap ? productsMap.get(row.product_id) : null;
     const ord = ordersMap ? ordersMap.get(row.order_id) : null;
+    const resolvedClientName = clt?.companyName || ord?.companyName || (clt?.name && clt.name !== 'ABC' ? clt.name : null) || row.client_name || 'Customer';
     return {
       id: row.id,
       returnNumber: row.return_number,
       orderId: row.order_id,
       orderNumber: ord?.orderNumber || row.order_number || 'INV',
       clientId: row.client_id,
-      clientName: clt?.name || row.client_name || 'Client',
+      clientName: resolvedClientName,
       productId: row.product_id,
       productName: prod?.name || row.product_name || 'Product',
       quantity: Number(row.quantity) || 0,

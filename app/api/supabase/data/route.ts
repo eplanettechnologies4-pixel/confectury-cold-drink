@@ -494,7 +494,7 @@ export async function POST(req: Request) {
             const { data: ord } = await supabase.from('orders').select('notes').eq('id', row.order_id).maybeSingle();
             const curNotes = ord?.notes || '';
             const newNotes = (curNotes + (curNotes.includes('[RETURNED]') ? '' : ' [RETURNED]')).trim();
-            await supabase.from('orders').update({ status: 'Returned', notes: newNotes }).eq('id', row.order_id);
+            await supabase.from('orders').update({ status: 'Cancelled', notes: newNotes }).eq('id', row.order_id);
           }
           return NextResponse.json({ success: true, id: row.id });
         }

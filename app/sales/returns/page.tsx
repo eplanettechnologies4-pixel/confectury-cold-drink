@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { RotateCcw, Plus, ShoppingBag, Eye, AlertTriangle, CheckCircle, Package } from 'lucide-react';
+import { RotateCcw, Plus, ShoppingBag, Eye, AlertTriangle, CheckCircle, Package, Receipt } from 'lucide-react';
 import { useAppState } from '@/lib/store';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Modal } from '@/components/ui/Modal';
@@ -101,7 +101,12 @@ export default function SalesReturnsPage() {
     },
     {
       header: 'Customer',
-      cell: (r) => <span className="font-semibold text-slate-900 text-xs">{r.clientName}</span>,
+      cell: (r) => {
+        const clt = clients.find(c => c.id === r.clientId);
+        const ord = orders.find(o => o.id === r.orderId || o.orderNumber === r.orderNumber);
+        const displayName = clt?.companyName || ord?.companyName || r.clientName || 'Customer';
+        return <span className="font-semibold text-slate-900 text-xs">{displayName}</span>;
+      },
     },
     {
       header: 'Product & Qty',
@@ -143,6 +148,35 @@ export default function SalesReturnsPage() {
     {
       header: 'Date',
       cell: (r) => <span className="text-xs font-mono text-slate-600">{formatDateDDMMYYYY(r.returnDate)}</span>,
+    },
+    {
+      header: 'Actions',
+      className: 'text-right',
+      cell: (r) => {
+        const ord = orders.find(o => o.id === r.orderId || o.orderNumber === r.orderNumber);
+        const targetId = ord?.id || r.orderId;
+        return (
+          <div className="flex items-center justify-end space-x-1.5">
+            <Link
+              href={`/orders/${targetId}`}
+              title="View Invoice Details"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded transition"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              <span>Invoice</span>
+            </Link>
+
+            <Link
+              href={`/orders/${targetId}/receipt`}
+              title="View & Print Thermal Receipt"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold rounded transition"
+            >
+              <Receipt className="h-3.5 w-3.5 text-amber-600" />
+              <span>Receipt</span>
+            </Link>
+          </div>
+        );
+      },
     },
   ];
 

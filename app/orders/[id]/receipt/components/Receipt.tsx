@@ -78,6 +78,7 @@ export function Receipt({ order, client: propClient }: { order: Order; client?: 
         orderNumber={order.orderNumber}
         date={order.orderDate}
         time={new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        status={order.status}
       />
       
       <ReceiptCustomer 
@@ -98,6 +99,7 @@ export function Receipt({ order, client: propClient }: { order: Order; client?: 
         grandTotal={order.grandTotal}
         paid={order.amountPaid}
         remaining={order.amountRemaining}
+        returnedAmount={order.returnedAmount}
       />
       
       <ReceiptPayment 

@@ -7,6 +7,7 @@ export function ReceiptTotals({
   grandTotal,
   paid,
   remaining,
+  returnedAmount,
 }: {
   subtotal: number;
   discount: number;
@@ -14,6 +15,7 @@ export function ReceiptTotals({
   grandTotal: number;
   paid: number;
   remaining: number;
+  returnedAmount?: number;
 }) {
   return (
     <div className="mb-4 text-sm text-gray-800">
@@ -32,6 +34,12 @@ export function ReceiptTotals({
           <span>Tax</span>
           <span>Rs. {tax.toFixed(2)}</span>
         </p>
+        {returnedAmount !== undefined && returnedAmount > 0 && (
+          <p className="flex justify-between text-rose-700 font-bold">
+            <span>Refund / Returned</span>
+            <span>-Rs. {returnedAmount.toFixed(2)}</span>
+          </p>
+        )}
       </div>
       
       <div className="border-b border-dashed border-gray-400 my-2"></div>
