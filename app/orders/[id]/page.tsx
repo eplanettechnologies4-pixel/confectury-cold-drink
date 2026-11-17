@@ -8,19 +8,53 @@ import { useAppState } from '@/lib/store';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ReturnModal } from '@/components/sales/ReturnModal';
 import { formatPKR, formatDateDDMMYYYY, BUSINESS_CONFIG } from '@/lib/utils';
+import { OrderItem } from '@/types';
 
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = params?.id as string;
-  const { orders, clients, salesReturns, updateOrderPaymentStatus, supabaseSyncStatus } = useAppState();
+  const { orders, clients, products, inventoryTransactions, salesReturns, updateOrderPaymentStatus, supabaseSyncStatus } = useAppState();
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [selectedProductIdForReturn, setSelectedProductIdForReturn] = useState<string | undefined>(undefined);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const order = orders.find(o => o.id === orderId || o.orderNumber === orderId);
-  const client = clients.find(c => c.id === order?.clientId);
+  const rawOrder = orders.find(o => o.id === orderId || o.orderNumber === orderId);
+  const client = clients.find(c => c.id === rawOrder?.clientId);
+
+  const order = React.useMemo(() => {
+    if (!rawOrder) return null;
+    if (rawOrder.items && rawOrder.items.length > 0) return rawOrder;
+    // Fallback: reconstruct items from inventoryTransactions if items array was missing
+    const matchingTx = (inventoryTransactions || []).filter(
+      tx => tx.reference === rawOrder.orderNumber && (tx.type === 'Sale' || (tx.type as string) === 'SALE' || tx.type === 'Stock Out')
+    );
+    if (matchingTx.length > 0) {
+      const reconstructedItems: OrderItem[] = matchingTx.map((tx, idx): OrderItem => {
+        const prod = products.find(p => p.id === tx.productId);
+        const qty = Math.abs(tx.quantity);
+        const unitPrice = prod?.sellingPrice || (rawOrder.grandTotal / (matchingTx.length || 1));
+        return {
+          id: tx.id || `reconstructed-${idx}`,
+          productId: tx.productId,
+          productName: prod?.name || (tx as any).productName || 'Wholesale Product',
+          sku: prod?.sku || '',
+          category: prod?.category || 'Confectionery',
+          unit: tx.unit || prod?.unit || 'Piece',
+          quantity: qty,
+          returnedQuantity: 0,
+          availableStock: prod?.currentStock || 0,
+          unitPrice,
+          discountPercent: 0,
+          discountAmount: 0,
+          total: unitPrice * qty,
+        };
+      });
+      return { ...rawOrder, items: reconstructedItems };
+    }
+    return rawOrder;
+  }, [rawOrder, inventoryTransactions, products]);
 
   if (!order) {
     if (supabaseSyncStatus === 'syncing') {

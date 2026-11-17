@@ -3,6 +3,33 @@ import { getServiceClient, mappers, ensureUUID } from '@/lib/supabase/service';
 
 export const dynamic = 'force-dynamic';
 
+async function fetchAllRows(
+  supabase: any,
+  table: string,
+  orderBy?: { column: string; ascending?: boolean }
+): Promise<any[]> {
+  const CHUNK_SIZE = 1000;
+  let allRows: any[] = [];
+  let from = 0;
+  while (true) {
+    let query = supabase.from(table).select('*');
+    if (orderBy) {
+      query = query.order(orderBy.column, { ascending: orderBy.ascending ?? true });
+    }
+    query = query.range(from, from + CHUNK_SIZE - 1);
+    const { data, error } = await query;
+    if (error) {
+      console.error(`[fetchAllRows] Error fetching ${table} rows [${from}-${from + CHUNK_SIZE - 1}]:`, error);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < CHUNK_SIZE) break;
+    from += CHUNK_SIZE;
+  }
+  return allRows;
+}
+
 export async function GET() {
   try {
     const supabase = getServiceClient();
@@ -14,61 +41,61 @@ export async function GET() {
       });
     }
 
-    // Parallel fetch of all primary tables
+    // Parallel fetch of all primary tables with pagination to bypass PostgREST 1000-row limit
     const [
-      areasRes,
-      clientsRes,
-      productsRes,
-      suppliersRes,
-      supplierPaymentsRes,
-      purchasesRes,
-      purchaseItemsRes,
-      ordersRes,
-      orderItemsRes,
-      paymentsRes,
-      ledgerRes,
-      expensesRes,
-      stockTxRes,
-      dailyClosingsRes,
-      dailyClosingItemsRes,
-      badDebtsRes,
-      badDebtRecoveriesRes,
-      damagedStockRes,
-      expiryRecordsRes,
-      staffRes,
+      areasRows,
+      clientsRows,
+      productsRows,
+      suppliersRows,
+      supplierPaymentsRows,
+      purchasesRows,
+      purchaseItemsRows,
+      ordersRows,
+      orderItemsRows,
+      paymentsRows,
+      ledgerRows,
+      expensesRows,
+      stockTxRows,
+      dailyClosingsRows,
+      dailyClosingItemsRows,
+      badDebtsRows,
+      badDebtRecoveriesRows,
+      damagedStockRows,
+      expiryRecordsRows,
+      staffRows,
       auditLogsRes,
-      purchaseReturnsRes,
-      salesReturnsRes,
+      purchaseReturnsRows,
+      salesReturnsRows,
     ] = await Promise.all([
-      supabase.from('areas').select('*').order('code', { ascending: true }),
-      supabase.from('clients').select('*').order('created_at', { ascending: false }),
-      supabase.from('products').select('*').order('name', { ascending: true }),
-      supabase.from('suppliers').select('*').order('name', { ascending: true }),
-      supabase.from('supplier_payments').select('*').order('payment_date', { ascending: false }),
-      supabase.from('purchases').select('*').order('created_at', { ascending: false }),
-      supabase.from('purchase_items').select('*'),
-      supabase.from('orders').select('*').order('created_at', { ascending: false }),
-      supabase.from('order_items').select('*'),
-      supabase.from('payments').select('*').order('payment_date', { ascending: false }),
-      supabase.from('client_ledger').select('*').order('date', { ascending: true }),
-      supabase.from('expenses').select('*').order('date', { ascending: false }),
-      supabase.from('inventory_transactions').select('*').order('created_at', { ascending: false }),
-      supabase.from('daily_closings').select('*').order('date', { ascending: false }),
-      supabase.from('daily_closing_items').select('*'),
-      supabase.from('bad_debts').select('*').order('created_at', { ascending: false }),
-      supabase.from('bad_debt_recoveries').select('*').order('payment_date', { ascending: false }),
-      supabase.from('damaged_stock').select('*').order('date', { ascending: false }),
-      supabase.from('expiry_records').select('*').order('expiry_date', { ascending: true }),
-      supabase.from('staff_profiles').select('*').order('name', { ascending: true }),
+      fetchAllRows(supabase, 'areas', { column: 'code', ascending: true }),
+      fetchAllRows(supabase, 'clients', { column: 'created_at', ascending: false }),
+      fetchAllRows(supabase, 'products', { column: 'name', ascending: true }),
+      fetchAllRows(supabase, 'suppliers', { column: 'name', ascending: true }),
+      fetchAllRows(supabase, 'supplier_payments', { column: 'payment_date', ascending: false }),
+      fetchAllRows(supabase, 'purchases', { column: 'created_at', ascending: false }),
+      fetchAllRows(supabase, 'purchase_items'),
+      fetchAllRows(supabase, 'orders', { column: 'created_at', ascending: false }),
+      fetchAllRows(supabase, 'order_items'),
+      fetchAllRows(supabase, 'payments', { column: 'payment_date', ascending: false }),
+      fetchAllRows(supabase, 'client_ledger', { column: 'date', ascending: true }),
+      fetchAllRows(supabase, 'expenses', { column: 'date', ascending: false }),
+      fetchAllRows(supabase, 'inventory_transactions', { column: 'created_at', ascending: false }),
+      fetchAllRows(supabase, 'daily_closings', { column: 'date', ascending: false }),
+      fetchAllRows(supabase, 'daily_closing_items'),
+      fetchAllRows(supabase, 'bad_debts', { column: 'created_at', ascending: false }),
+      fetchAllRows(supabase, 'bad_debt_recoveries', { column: 'payment_date', ascending: false }),
+      fetchAllRows(supabase, 'damaged_stock', { column: 'date', ascending: false }),
+      fetchAllRows(supabase, 'expiry_records', { column: 'expiry_date', ascending: true }),
+      fetchAllRows(supabase, 'staff_profiles', { column: 'name', ascending: true }),
       supabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(200),
-      supabase.from('purchase_returns').select('*').order('created_at', { ascending: false }),
-      supabase.from('sales_returns').select('*').order('created_at', { ascending: false }),
+      fetchAllRows(supabase, 'purchase_returns', { column: 'created_at', ascending: false }),
+      fetchAllRows(supabase, 'sales_returns', { column: 'created_at', ascending: false }),
     ]);
 
-    const areas = (areasRes.data || []).map(mappers.areaFromDb);
-    const clients = (clientsRes.data || []).map(mappers.clientFromDb);
-    const products = (productsRes.data || []).map(mappers.productFromDb);
-    const suppliers = (suppliersRes.data || []).map(mappers.supplierFromDb);
+    const areas = areasRows.map(mappers.areaFromDb);
+    const clients = clientsRows.map(mappers.clientFromDb);
+    const products = productsRows.map(mappers.productFromDb);
+    const suppliers = suppliersRows.map(mappers.supplierFromDb);
 
     // Create lookup maps
     const clientsMap = new Map(clients.map(c => [c.id, c]));
@@ -77,7 +104,7 @@ export async function GET() {
 
     // Group items for purchases
     const purchaseItemsByPurchaseId = new Map<string, any[]>();
-    (purchaseItemsRes.data || []).forEach((item: any) => {
+    purchaseItemsRows.forEach((item: any) => {
       const list = purchaseItemsByPurchaseId.get(item.purchase_id) || [];
       list.push(mappers.purchaseItemFromDb(item, productsMap));
       purchaseItemsByPurchaseId.set(item.purchase_id, list);
@@ -85,7 +112,7 @@ export async function GET() {
 
     // Group items for orders
     const orderItemsByOrderId = new Map<string, any[]>();
-    (orderItemsRes.data || []).forEach((item: any) => {
+    orderItemsRows.forEach((item: any) => {
       const list = orderItemsByOrderId.get(item.order_id) || [];
       list.push(mappers.orderItemFromDb(item, productsMap));
       orderItemsByOrderId.set(item.order_id, list);
@@ -93,7 +120,7 @@ export async function GET() {
 
     // Group items for daily closings
     const closingItemsByClosingId = new Map<string, any[]>();
-    (dailyClosingItemsRes.data || []).forEach((item: any) => {
+    dailyClosingItemsRows.forEach((item: any) => {
       const list = closingItemsByClosingId.get(item.closing_id) || [];
       list.push(mappers.dailyClosingItemFromDb(item, productsMap));
       closingItemsByClosingId.set(item.closing_id, list);
@@ -101,29 +128,29 @@ export async function GET() {
 
     // Group client ledger by client_id
     const ledgerByClient: Record<string, any[]> = {};
-    (ledgerRes.data || []).forEach((row: any) => {
+    ledgerRows.forEach((row: any) => {
       const entry = mappers.ledgerFromDb(row);
       if (!ledgerByClient[entry.clientId]) ledgerByClient[entry.clientId] = [];
       ledgerByClient[entry.clientId].push(entry);
     });
 
-    const supplierPayments = (supplierPaymentsRes.data || []).map(row =>
+    const supplierPayments = supplierPaymentsRows.map(row =>
       mappers.supplierPaymentFromDb(row, suppliersMap)
     );
 
     // Identify returned purchases and sales orders
     const returnedPurchaseIds = new Set<string>(
-      (purchaseReturnsRes.data || [])
+      purchaseReturnsRows
         .map((pr: any) => pr.purchase_id)
         .filter(Boolean)
     );
     const returnedOrderIds = new Set<string>(
-      (salesReturnsRes.data || [])
+      salesReturnsRows
         .map((sr: any) => sr.order_id)
         .filter(Boolean)
     );
 
-    const purchases = (purchasesRes.data || []).map((p: any) => {
+    const purchases = purchasesRows.map((p: any) => {
       const pur = mappers.purchaseFromDb(p, purchaseItemsByPurchaseId.get(p.id) || [], suppliersMap);
       if (returnedPurchaseIds.has(p.id) || p.status === 'Cancelled' || (typeof p.notes === 'string' && p.notes.includes('[RETURNED]'))) {
         pur.status = 'Returned';
@@ -132,8 +159,42 @@ export async function GET() {
     });
     const purchasesMap = new Map(purchases.map(p => [p.id, p]));
 
-    const orders = (ordersRes.data || []).map((o: any) => {
-      const ord = mappers.orderFromDb(o, orderItemsByOrderId.get(o.id) || [], clientsMap);
+    // Inventory transactions by reference as fallback for any legacy order missing items
+    const txsByOrderNumber = new Map<string, any[]>();
+    stockTxRows.forEach((tx: any) => {
+      if (tx.reference && tx.type === 'SALE') {
+        const list = txsByOrderNumber.get(tx.reference) || [];
+        list.push(tx);
+        txsByOrderNumber.set(tx.reference, list);
+      }
+    });
+
+    const orders = ordersRows.map((o: any) => {
+      let items = orderItemsByOrderId.get(o.id) || [];
+      // Safety Fallback: if order_items was empty, reconstruct items from inventory_transactions
+      if (items.length === 0 && txsByOrderNumber.has(o.order_number)) {
+        const txs = txsByOrderNumber.get(o.order_number)!;
+        items = txs.map((tx: any, idx: number) => {
+          const prod = productsMap.get(tx.product_id);
+          const qty = Math.abs(Number(tx.quantity) || 1);
+          const unitPrice = prod?.sellingPrice || Number(tx.unit_cost) || 0;
+          return {
+            id: tx.id || `${o.id}-item-${idx}`,
+            productId: tx.product_id,
+            productName: prod?.name || 'Product',
+            sku: prod?.sku || '',
+            category: prod?.category || 'Confectionery',
+            unit: tx.unit || prod?.unit || 'Piece',
+            quantity: qty,
+            availableStock: prod?.currentStock || 0,
+            unitPrice,
+            discountPercent: 0,
+            discountAmount: 0,
+            total: unitPrice * qty,
+          };
+        });
+      }
+      const ord = mappers.orderFromDb(o, items, clientsMap);
       if (returnedOrderIds.has(o.id) || o.status === 'Cancelled' || (typeof o.notes === 'string' && o.notes.includes('[RETURNED]'))) {
         ord.status = 'Returned';
       }
@@ -141,30 +202,30 @@ export async function GET() {
     });
     const ordersMap = new Map(orders.map(o => [o.id, o]));
 
-    const payments = (paymentsRes.data || []).map(row => mappers.paymentFromDb(row, clientsMap));
-    const expenses = (expensesRes.data || []).map(mappers.expenseFromDb);
-    const inventoryTransactions = (stockTxRes.data || []).map(row =>
+    const payments = paymentsRows.map(row => mappers.paymentFromDb(row, clientsMap));
+    const expenses = expensesRows.map(mappers.expenseFromDb);
+    const inventoryTransactions = stockTxRows.map(row =>
       mappers.inventoryTxFromDb(row, productsMap)
     );
-    const dailyClosings = (dailyClosingsRes.data || []).map((dc: any) =>
+    const dailyClosings = dailyClosingsRows.map((dc: any) =>
       mappers.dailyClosingFromDb(dc, closingItemsByClosingId.get(dc.id) || [])
     );
-    const badDebts = (badDebtsRes.data || []).map(row => mappers.badDebtFromDb(row, clientsMap));
-    const badDebtRecoveries = (badDebtRecoveriesRes.data || []).map(row =>
+    const badDebts = badDebtsRows.map(row => mappers.badDebtFromDb(row, clientsMap));
+    const badDebtRecoveries = badDebtRecoveriesRows.map(row =>
       mappers.badDebtRecoveryFromDb(row, clientsMap)
     );
-    const damagedStockRecords = (damagedStockRes.data || []).map(row =>
+    const damagedStockRecords = (damagedStockRows || []).map(row =>
       mappers.damagedStockFromDb(row, productsMap)
     );
-    const expiryRecords = (expiryRecordsRes.data || []).map(row =>
+    const expiryRecords = expiryRecordsRows.map(row =>
       mappers.expiryRecordFromDb(row, productsMap)
     );
-    const staff = (staffRes.data || []).map(mappers.staffFromDb);
+    const staff = staffRows.map(mappers.staffFromDb);
     const auditLogs = (auditLogsRes.data || []).map(mappers.auditLogFromDb);
-    const purchaseReturns = (purchaseReturnsRes.data || []).map(row =>
+    const purchaseReturns = purchaseReturnsRows.map(row =>
       mappers.purchaseReturnFromDb(row, suppliersMap, productsMap, purchasesMap)
     );
-    const salesReturns = (salesReturnsRes.data || []).map(row =>
+    const salesReturns = salesReturnsRows.map(row =>
       mappers.salesReturnFromDb(row, clientsMap, productsMap, ordersMap)
     );
 

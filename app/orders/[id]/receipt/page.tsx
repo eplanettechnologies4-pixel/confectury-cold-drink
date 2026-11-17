@@ -9,18 +9,51 @@ import { Receipt } from './components/Receipt';
 import { PrintReceiptButton } from './components/PrintReceiptButton';
 import { EmailReceiptModal } from './components/EmailReceiptModal';
 import { ReceiptActivity } from './components/ReceiptActivity';
-import { ReceiptLog } from '@/types';
+import { ReceiptLog, OrderItem } from '@/types';
 
 export default function ReceiptPage() {
   const params = useParams();
   const orderId = params.id as string;
-  const { orders, clients, supabaseSyncStatus } = useAppState();
+  const { orders, clients, products, inventoryTransactions, supabaseSyncStatus } = useAppState();
 
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [receiptLogs, setReceiptLogs] = useState<ReceiptLog[]>([]);
 
-  const order = orders.find(o => o.id === orderId || o.orderNumber === orderId);
-  const client = clients.find(c => c.id === order?.clientId);
+  const rawOrder = orders.find(o => o.id === orderId || o.orderNumber === orderId);
+  const client = clients.find(c => c.id === rawOrder?.clientId);
+
+  const order = React.useMemo(() => {
+    if (!rawOrder) return null;
+    if (rawOrder.items && rawOrder.items.length > 0) return rawOrder;
+    // Fallback: reconstruct items from inventoryTransactions if items array was missing
+    const matchingTx = (inventoryTransactions || []).filter(
+      tx => tx.reference === rawOrder.orderNumber && (tx.type === 'Sale' || (tx.type as string) === 'SALE' || tx.type === 'Stock Out')
+    );
+    if (matchingTx.length > 0) {
+      const reconstructedItems: OrderItem[] = matchingTx.map((tx, idx): OrderItem => {
+        const prod = products.find(p => p.id === tx.productId);
+        const qty = Math.abs(tx.quantity);
+        const unitPrice = prod?.sellingPrice || (rawOrder.grandTotal / (matchingTx.length || 1));
+        return {
+          id: tx.id || `reconstructed-${idx}`,
+          productId: tx.productId,
+          productName: prod?.name || (tx as any).productName || 'Wholesale Product',
+          sku: prod?.sku || '',
+          category: prod?.category || 'Confectionery',
+          unit: tx.unit || prod?.unit || 'Piece',
+          quantity: qty,
+          returnedQuantity: 0,
+          availableStock: prod?.currentStock || 0,
+          unitPrice,
+          discountPercent: 0,
+          discountAmount: 0,
+          total: unitPrice * qty,
+        };
+      });
+      return { ...rawOrder, items: reconstructedItems };
+    }
+    return rawOrder;
+  }, [rawOrder, inventoryTransactions, products]);
 
   if (!order) {
     if (supabaseSyncStatus === 'syncing') {
@@ -64,7 +97,7 @@ export default function ReceiptPage() {
           </Link>
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">Order {order.orderNumber}</h1>
-            <p className="text-sm text-slate-500">Receipt #EP-{order.id.substring(0, 6).toUpperCase()}</p>
+            <p className="text-sm text-slate-500">Receipt #{order.orderNumber}</p>
           </div>
         </div>
 
